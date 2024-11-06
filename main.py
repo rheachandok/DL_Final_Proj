@@ -1,30 +1,51 @@
-from dataset import WallDataset
+from dataset import create_wall_dataloader
 from evaluator import ProbingEvaluator
 import torch
+from models import MockModel
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("Using device:", device)
 
-probe_train_ds = WallDataset(
+
+probe_train_ds = create_wall_dataloader(
     data_path="/vast/wz1232/dl_final_project_2/probe_normal/train",
     probing=True,
     device=device,
+    train=True,
 )
 
-probe_val_normal_ds = WallDataset(
+probe_val_normal_ds = create_wall_dataloader(
     data_path="/vast/wz1232/dl_final_project_2/probe_normal/val",
     probing=True,
     device=device,
+    train=False,
 )
 
-probe_val_wall_ds = WallDataset(
+probe_val_wall_ds = create_wall_dataloader(
     data_path="/vast/wz1232/dl_final_project_2/probe_wall/val",
     probing=True,
     device=device,
+    train=False,
 )
 
 probe_val_ds = {"normal": probe_val_normal_ds, "wall": probe_val_wall_ds}
 
+
+# load your model
+################################################################################
+
+datum = next(iter(probe_train_ds))
+
+model = MockModel()
+
+preds = model(states=datum.states, actions=datum.actions)
+
+################################################################################
+
+
 evaluator = ProbingEvaluator(
-    device=device, model=None, probe_train_ds=probe_train_ds, probe_val_ds=probe_val_ds
+    device=device, model=model, probe_train_ds=probe_train_ds, probe_val_ds=probe_val_ds
 )
+
+
+prober = evaluator.train_pred_prober()
