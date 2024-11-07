@@ -11,7 +11,6 @@ from matplotlib import pyplot as plt
 
 from schedulers import Scheduler, LRSchedule
 from models import Prober, build_mlp
-from plotting import plot_prober_predictions
 from configs import ConfigBase
 
 from dataset import WallDataset
