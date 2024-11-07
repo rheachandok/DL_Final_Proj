@@ -17,19 +17,15 @@ from configs import ConfigBase
 from dataset import WallDataset
 from normalizer import Normalizer
 
-from hjepa.data.enums import ProbingDatasets, DatasetType
-from hjepa.models.utils import flatten_conv_output
-
 
 @dataclass
 class ProbingConfig(ConfigBase):
     probe_targets: str = "locations"
     lr: float = 0.0002
-    epochs: int = 10
+    epochs: int = 20
     schedule: LRSchedule = LRSchedule.Cosine
     sample_timesteps: int = 30
-    prober_arch: str = "512"
-    visualize_probing: bool = True
+    prober_arch: str = "256"
 
 
 class ProbeResult(NamedTuple):
@@ -44,10 +40,6 @@ default_config = ProbingConfig()
 
 def location_losses(pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
     assert pred.shape == target.shape
-    # Pred and target are both B x T x 2
-    # we just avg the batch.
-    # mse = (pred - target).pow(2).flatten(end_dim=-4).mean(dim=0)
-
     mse = (pred - target).pow(2).mean(dim=0)
     return mse
 
@@ -121,21 +113,11 @@ class ProbingEvaluator:
             for batch in tqdm(dataset, desc="Probe prediction step"):
                 ################################################################################
                 # TODO: Forward pass through your model
-                # pred_encs = model(states=batch.states, actions=batch.actions)
-                # # BS, T, D --> T, BS, D
-                # pred_encs = pred_encs.transpose(0, 1)
-
-                forward_result = model.forward_posterior(
-                    self.normalizer.normalize_state(batch.states).transpose(0, 1),
-                    self.normalizer.normalize_action(batch.actions).transpose(0, 1),
-                )
-
-                pred_encs = forward_result.state_predictions
-                pred_encs = flatten_conv_output(pred_encs)
-
-                ################################################################################
+                pred_encs = model(states=batch.states, actions=batch.actions)
+                pred_encs = pred_encs.transpose(0, 1)  # # BS, T, D --> T, BS, D
 
                 # Make sure pred_encs has shape (T, BS, D) at this point
+                ################################################################################
 
                 pred_encs = pred_encs.detach()
 
@@ -196,7 +178,6 @@ class ProbingEvaluator:
     def evaluate_all(
         self,
         prober,
-        visualize=True,
     ):
         """
         Evaluates on all the different validation datasets
@@ -207,7 +188,6 @@ class ProbingEvaluator:
             avg_losses[prefix] = self.evaluate_pred_prober(
                 prober=prober,
                 val_ds=val_ds,
-                visualize=visualize,
                 prefix=prefix,
             )
 
@@ -218,7 +198,6 @@ class ProbingEvaluator:
         self,
         prober,
         val_ds,
-        visualize=True,
         prefix="",
     ):
         quick_debug = self.quick_debug
@@ -231,18 +210,11 @@ class ProbingEvaluator:
         for idx, batch in enumerate(tqdm(val_ds, desc="Eval probe pred")):
             ################################################################################
             # TODO: Forward pass through your model
-            # pred_encs = model(states=batch.states, actions=batch.actions)
+            pred_encs = model(states=batch.states, actions=batch.actions)
             # # BS, T, D --> T, BS, D
-            # pred_encs = pred_encs.transpose(0, 1)
+            pred_encs = pred_encs.transpose(0, 1)
 
-            forward_result = model.forward_posterior(
-                self.normalizer.normalize_state(batch.states).transpose(0, 1),
-                self.normalizer.normalize_action(batch.actions).transpose(0, 1),
-            )
-
-            pred_encs = forward_result.state_predictions
-            pred_encs = flatten_conv_output(pred_encs)
-
+            # Make sure pred_encs has shape (T, BS, D) at this point
             ################################################################################
 
             target = getattr(batch, "locations").cuda()
@@ -257,16 +229,5 @@ class ProbingEvaluator:
 
         losses_t = losses_t.mean(dim=-1)
         average_eval_loss = losses_t.mean().item()
-
-        # visualize location predictions
-        if self.config.visualize_probing and visualize:
-            plot_prober_predictions(
-                next(iter(val_ds)),
-                model,
-                prober,
-                normalizer=self.normalizer,
-                name_prefix=prefix,
-                idxs=None if not self.quick_debug else list(range(10)),
-            )
 
         return average_eval_loss
