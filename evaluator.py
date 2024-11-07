@@ -15,6 +15,7 @@ from plotting import plot_prober_predictions
 from configs import ConfigBase
 
 from dataset import WallDataset
+from normalizer import Normalizer
 
 from hjepa.data.enums import ProbingDatasets, DatasetType
 
@@ -42,9 +43,10 @@ default_config = ProbingConfig()
 
 def location_losses(pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
     assert pred.shape == target.shape
-    # Pred and target are both B x T x N_DOTS x 2 or B x N_DOTS x 2.
+    # Pred and target are both B x T x 2
     # we just avg the batch.
     # mse = (pred - target).pow(2).flatten(end_dim=-4).mean(dim=0)
+
     mse = (pred - target).pow(2).mean(dim=0)
     return mse
 
@@ -61,11 +63,16 @@ class ProbingEvaluator:
     ):
         self.device = device
         self.config = config
+
         self.model = model
+        self.model.eval()
+
         self.quick_debug = quick_debug
 
         self.ds = probe_train_ds
         self.val_ds = probe_val_ds
+
+        self.normalizer = Normalizer()
 
     def train_pred_prober(self):
         """
@@ -124,6 +131,7 @@ class ProbingEvaluator:
                 losses_list = []
 
                 target = getattr(batch, "locations").cuda()
+                target = self.normalizer.normalize_location(target)
 
                 if (
                     config.sample_timesteps is not None
@@ -153,7 +161,7 @@ class ProbingEvaluator:
                 per_probe_loss = losses.mean()
 
                 if step % 100 == 0:
-                    print(f"finetune_pred_locations loss {per_probe_loss.item()}")
+                    print(f"normalized pred locations loss {per_probe_loss.item()}")
 
                 losses_list.append(per_probe_loss)
                 optimizer_pred_prober.zero_grad()
@@ -165,109 +173,73 @@ class ProbingEvaluator:
 
                 step += 1
 
+                if self.quick_debug and step > 2:
+                    break
+
         return prober
 
     @torch.no_grad()
     def evaluate_all(
         self,
-        probers,
-        epoch,
-        pixel_mapper=None,
+        prober,
         visualize=True,
     ):
         """
         Evaluates on all the different validation datasets
         """
+        avg_losses = {}
 
-        val_datasets = {"pred_probe": self.val_ds}
-        val_datasets.update(self.extra_val_ds)
-
-        for prefix, val_ds in val_datasets.items():
-            self.evaluate_pred_prober(
-                probers=probers,
-                epoch=epoch,
+        for prefix, val_ds in self.val_ds.items():
+            avg_losses[prefix] = self.evaluate_pred_prober(
+                prober=prober,
                 val_ds=val_ds,
-                pixel_mapper=pixel_mapper,
                 visualize=visualize,
             )
+
+        return avg_losses
 
     @torch.no_grad()
     def evaluate_pred_prober(
         self,
-        probers,
-        epoch,
-        val_ds: DatasetType,
-        pixel_mapper=None,
+        prober,
+        val_ds,
         visualize=True,
     ):
         quick_debug = self.quick_debug
         config = self.config
 
-        eval_repr_losses = []
-
-        probing_losses = {}
-        for probe_target, prober in probers.items():
-            prober.eval()
-            probing_losses[probe_target] = []
+        model = self.model
+        probing_losses = []
+        prober.eval()
 
         for idx, batch in enumerate(tqdm(val_ds, desc="Eval probe pred")):
-            # put time first
-            states = batch.states.cuda().transpose(0, 1)
+            pred_encs = model(states=batch.states, actions=batch.actions)
+            # BS, T, D --> T, BS, D
+            pred_encs = pred_encs.transpose(0, 1)
 
-            # drop actions of other spheres, put time first
-            actions = batch.actions[:, :, 0].cuda().transpose(0, 1)
+            target = getattr(batch, "locations").cuda()
+            target = self.normalizer.normalize_location(target)
 
-            forward_result = model.forward_posterior(states, actions)
+            pred_locs = torch.stack([prober(x) for x in pred_encs], dim=1)
+            losses = location_losses(pred_locs, target)
+            probing_losses.append(losses.cpu())
 
-            pred_encs = forward_result.state_predictions
-            encs = forward_result.encodings
+        losses_t = torch.stack(probing_losses, dim=0).mean(dim=0)
+        losses_t = self.normalizer.unnormalize_mse(losses_t)
 
-            for probe_target, prober in probers.items():
-                target = getattr(batch, probe_target).cuda()
-                pred_locs = torch.stack([prober(x) for x in pred_encs], dim=1)
-                losses = location_losses(pred_locs, target)
-                probing_losses[probe_target].append(losses.cpu())
+        losses_t = losses_t.mean(dim=-1)
+        average_eval_loss = losses_t.mean().item()
 
-            repr_loss = F.mse_loss(encs, pred_encs)
-            eval_repr_losses.append(repr_loss.cpu())
+        # visualize location predictions
+        # if self.config.visualize_probing and visualize:
+        #     plot_prober_predictions(
+        #         next(iter(val_ds)),
+        #         model,
+        #         probers["locations"],
+        #         normalizer=val_ds.normalizer,
+        #         name_prefix="",
+        #         idxs=None if not quick_debug else list(range(10)),
+        #         pixel_mapper=pixel_mapper,
+        #     )
 
-            if quick_debug and idx > 2:
-                break
-
-        repr_loss = torch.stack(eval_repr_losses).mean()
-
-        log_dict = {
-            f"finetune_pred_val/repr_loss": repr_loss.item(),
-        }
-
-        for probe_target, eval_losses in probing_losses.items():
-            losses_t = torch.stack(eval_losses, dim=0).mean(dim=0)
-            losses_t = val_ds.normalizer.unnormalize_mse(losses_t, probe_target)
-            losses_t = losses_t.mean(dim=-1)
-            average_eval_loss = losses_t.mean().item()
-            log_dict[f"finetune_pred_val_{probe_target}/loss"] = average_eval_loss
-            log_dict[f"finetune_pred_val_{probe_target}/loss_rmse"] = np.sqrt(
-                average_eval_loss
-            )
-
-            time_skip = 3  # for less logging
-
-            for i, val_loss in enumerate(losses_t[::time_skip]):
-                actual_i = i * time_skip
-                log_dict[
-                    f"finetune_pred_val_{probe_target}/loss_{actual_i}"
-                ] = val_loss.item()
-
-        # right now, we only visualize location predictions
-        if self.config.visualize_probing and visualize:
-            plot_prober_predictions(
-                next(iter(val_ds)),
-                model,
-                probers["locations"],
-                normalizer=val_ds.normalizer,
-                name_prefix="",
-                idxs=None if not quick_debug else list(range(10)),
-                pixel_mapper=pixel_mapper,
-            )
-
-        return
+        return average_eval_loss

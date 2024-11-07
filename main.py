@@ -31,21 +31,22 @@ probe_val_wall_ds = create_wall_dataloader(
 probe_val_ds = {"normal": probe_val_normal_ds, "wall": probe_val_wall_ds}
 
 
-# load your model
 ################################################################################
-
-datum = next(iter(probe_train_ds))
+# TODO: Load your own trained model
 
 model = MockModel()
 
-preds = model(states=datum.states, actions=datum.actions)
-
 ################################################################################
 
-
 evaluator = ProbingEvaluator(
-    device=device, model=model, probe_train_ds=probe_train_ds, probe_val_ds=probe_val_ds
+    device=device,
+    model=model,
+    probe_train_ds=probe_train_ds,
+    probe_val_ds=probe_val_ds,
+    quick_debug=True,
 )
 
-
 prober = evaluator.train_pred_prober()
+
+avg_losses = evaluator.evaluate_all(prober=prober)
+
