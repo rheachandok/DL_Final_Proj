@@ -4,51 +4,70 @@ import torch
 from models import MockModel
 import glob
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print("Using device:", device)
+
+def get_device():
+    """Check for GPU availability."""
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print("Using device:", device)
+    return device
 
 
-probe_train_ds = create_wall_dataloader(
-    data_path="/vast/wz1232/dl_final_project_2/probe_normal/train",
-    probing=True,
-    device=device,
-    train=True,
-)
+def load_data(device):
+    # TODO: Replace with your own path
+    data_path = "/vast/wz1232/dl_final_project_2"
 
-probe_val_normal_ds = create_wall_dataloader(
-    data_path="/vast/wz1232/dl_final_project_2/probe_normal/val",
-    probing=True,
-    device=device,
-    train=False,
-)
+    probe_train_ds = create_wall_dataloader(
+        data_path=f"{data_path}/probe_normal/train",
+        probing=True,
+        device=device,
+        train=True,
+    )
 
-probe_val_wall_ds = create_wall_dataloader(
-    data_path="/vast/wz1232/dl_final_project_2/probe_wall/val",
-    probing=True,
-    device=device,
-    train=False,
-)
+    probe_val_normal_ds = create_wall_dataloader(
+        data_path=f"{data_path}/probe_normal/val",
+        probing=True,
+        device=device,
+        train=False,
+    )
 
-probe_val_ds = {"normal": probe_val_normal_ds, "wall": probe_val_wall_ds}
+    probe_val_wall_ds = create_wall_dataloader(
+        data_path=f"{data_path}/probe_wall/val",
+        probing=True,
+        device=device,
+        train=False,
+    )
 
-################################################################################
-# TODO: Load your own trained model
+    probe_val_ds = {"normal": probe_val_normal_ds, "wall": probe_val_wall_ds}
 
-model = MockModel()
+    return probe_train_ds, probe_val_ds
 
-################################################################################
 
-evaluator = ProbingEvaluator(
-    device=device,
-    model=model,
-    probe_train_ds=probe_train_ds,
-    probe_val_ds=probe_val_ds,
-    quick_debug=False,
-)
+def load_model():
+    """Load or initialize the model."""
+    # TODO: Replace MockModel with your trained model
+    model = MockModel()
+    return model
 
-prober = evaluator.train_pred_prober()
 
-avg_losses = evaluator.evaluate_all(prober=prober)
+def evaluate_model(device, model, probe_train_ds, probe_val_ds):
+    evaluator = ProbingEvaluator(
+        device=device,
+        model=model,
+        probe_train_ds=probe_train_ds,
+        probe_val_ds=probe_val_ds,
+        quick_debug=False,
+    )
 
-for probe_attr, loss in avg_losses.items():
-    print(f"{probe_attr} loss: {loss}")
+    prober = evaluator.train_pred_prober()
+
+    avg_losses = evaluator.evaluate_all(prober=prober)
+
+    for probe_attr, loss in avg_losses.items():
+        print(f"{probe_attr} loss: {loss}")
+
+
+if __name__ == "__main__":
+    device = get_device()
+    probe_train_ds, probe_val_ds = load_data(device)
+    model = load_model()
+    evaluate_model(device, model, probe_train_ds, probe_val_ds)
