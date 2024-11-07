@@ -2,9 +2,7 @@ from dataset import create_wall_dataloader
 from evaluator import ProbingEvaluator
 import torch
 from models import MockModel
-from logger import Logger
 import glob
-from utils import *
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("Using device:", device)
