@@ -194,6 +194,7 @@ class ProbingEvaluator:
                 prober=prober,
                 val_ds=val_ds,
                 visualize=visualize,
+                prefix=prefix,
             )
 
         return avg_losses
@@ -204,6 +205,7 @@ class ProbingEvaluator:
         prober,
         val_ds,
         visualize=True,
+        prefix="",
     ):
         quick_debug = self.quick_debug
         config = self.config
@@ -231,15 +233,14 @@ class ProbingEvaluator:
         average_eval_loss = losses_t.mean().item()
 
         # visualize location predictions
-        # if self.config.visualize_probing and visualize:
-        #     plot_prober_predictions(
-        #         next(iter(val_ds)),
-        #         model,
-        #         probers["locations"],
-        #         normalizer=val_ds.normalizer,
-        #         name_prefix="",
-        #         idxs=None if not quick_debug else list(range(10)),
-        #         pixel_mapper=pixel_mapper,
-        #     )
+        if self.config.visualize_probing and visualize:
+            plot_prober_predictions(
+                next(iter(val_ds)),
+                model,
+                prober,
+                normalizer=self.normalizer,
+                name_prefix=prefix,
+                idxs=None if not self.quick_debug else list(range(10)),
+            )
 
         return average_eval_loss

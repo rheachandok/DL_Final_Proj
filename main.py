@@ -2,6 +2,9 @@ from dataset import create_wall_dataloader
 from evaluator import ProbingEvaluator
 import torch
 from models import MockModel
+from logger import Logger
+import glob
+from utils import *
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("Using device:", device)
@@ -38,6 +41,17 @@ model = MockModel()
 
 ################################################################################
 
+remove_all_files("/scratch/wz1232/DL_Final_Proj/media")
+
+Logger.run().initialize(
+    output_path="/scratch/wz1232/DL_Final_Proj",
+    wandb_enabled=False,
+    project="DL_final_project",
+    name="test",
+    group="test",
+)
+
+
 evaluator = ProbingEvaluator(
     device=device,
     model=model,
@@ -50,3 +64,5 @@ prober = evaluator.train_pred_prober()
 
 avg_losses = evaluator.evaluate_all(prober=prober)
 
+for probe_attr, loss in avg_losses.items():
+    print(f"{probe_attr} loss: {loss}")
