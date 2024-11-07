@@ -25,7 +25,7 @@ class MockModel(torch.nn.Module):
         self.device = device
         self.bs = bs
         self.n_steps = n_steps
-        self.output_dim = 256
+        self.repr_dim = 256
 
     def forward(self, states, actions):
         """
@@ -36,7 +36,7 @@ class MockModel(torch.nn.Module):
         Output:
             predictions: [B, T, D]
         """
-        return torch.randn((self.bs, self.n_steps, self.output_dim)).to(self.device)
+        return torch.randn((self.bs, self.n_steps, self.repr_dim)).to(self.device)
 
 
 class Prober(torch.nn.Module):

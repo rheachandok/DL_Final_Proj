@@ -5,6 +5,7 @@ from matplotlib import pyplot as plt
 from dataset import WallSample
 from normalizer import Normalizer
 from logger import Logger
+from hjepa.models.utils import flatten_conv_output
 
 
 @torch.no_grad()
@@ -19,7 +20,21 @@ def plot_prober_predictions(
     states = batch.states
     actions = batch.actions
 
-    pred_encs = model(states, actions)
+    ################################################################################
+
+    forward_result = model.forward_posterior(
+        normalizer.normalize_state(states).transpose(0, 1),
+        normalizer.normalize_action(actions).transpose(0, 1),
+    )
+
+    pred_encs = forward_result.state_predictions
+    pred_encs = flatten_conv_output(pred_encs)
+    pred_encs = pred_encs.transpose(0, 1)
+
+    # pred_encs = model(states, actions)
+
+    ################################################################################
+
     pred_locs = torch.stack([prober(x) for x in pred_encs], dim=0)
 
     # pred_locs is of shape (batch_size, time, 1, 2)
