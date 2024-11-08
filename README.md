@@ -27,12 +27,10 @@ The architecture may also be teacher-forcing (non-recurrent):
 
 The JEPA training objective would be to minimize the distance between predicted representation $\hat{e_t}$ and the target representation $\bar{e_t}$, where:
 
-$$
-\text{Target Encoder}: \bar{e}_t = \text{Enc}^{\top}_{\psi}(obs_t)
-$$
-$$
-\text{min } \sum_{t=1}^{h}d(\hat{e_t}, \bar{e_t})
-$$
+<div align="center">
+  <img src="assets/eq_three.png" alt="Alt Text" width="550"/>
+</div>
+
 
 Where $\text{Enc}^{\top}_{\psi}$ may be identical to $\text{Enc}_\theta$ ([VicReg](https://arxiv.org/pdf/2105.04906), [Barlow Twins](https://arxiv.org/pdf/2103.03230)), or not ([BYOL](https://arxiv.org/pdf/2006.07733))
 
