@@ -11,7 +11,7 @@ More formally, in the context of this problem, given agent trajectory $(obs_0, a
 
 $e^1$
 
-$ \hat{e}_0 = e_0 = \text{Enc}_\theta(obs_0)$ 
+$ \hat{e}_0 = e_0 = Enc_\theta(obs_0)$ 
 
 $\text{Encoder}: \hat{e}_0 = e_0 = \text{Enc}_\theta(obs_0)$
 
