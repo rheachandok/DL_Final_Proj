@@ -40,6 +40,8 @@ Here's a diagram illustrating a recurrent JEPA for 4 timesteps:
 ### Environment / Dataset
 The dataset consists of random trajectories collected from a toy environment consisting of an agent (dot) in two rooms separated by a wall. There's a door in a wall.  The agent cannot travel through the border wall or middle wall (except through the door). Different trajectories may have different wall and door positions. Thus your JEPA model needs to be able to perceive and distinguish environment layouts. Two training trajectories with different layouts are depicted below.
 
+<img src="assets/two_rooms.png" alt="Alt Text" width="500"/>
+
 ### Task
 Your task is to implement train a JEPA architecture on dataset of 2.5M frames of exploratory trajectories collected from an agent in an environment with two rooms. Then, your model will be evaluated based on how well the predicted representations will capture the true (x, y) coordinate of the agent. 
 
@@ -66,18 +68,61 @@ There are two other validation sets that are not released but will be used to te
 
 
 ### Competition criteria
-Each team will be evaluated on 5 aspects:
-1. MSE error on `probe_normal`
-2. MSE error on `probe_wall`
-3. MSE error on long horizon probing test
-4. MSE error on out of domain wall probing test
-5. Parameter count of your model (less parameters --> more points)
+Each team will be evaluated on 5 criterias:
 
-## Setup
+1. MSE error on `probe_normal`. **Weight** 1
+2. MSE error on `probe_wall`. **Weight** 1
+3. MSE error on long horizon probing test. **Weight** 1
+4. MSE error on out of domain wall probing test. **Weight** 1
+5. Parameter count of your model (less parameters --> more points). **Weight** 0.5
 
-Steps:
+The teams are first ranked according to each criteria independently. A particular team's overall ranking is the weighted sum of the 5 rankings:
 
-1. Download the dataset (states.npy, actions.npy)
-2. Train a JEPA model on the dataset
-3. Evaluate on validation dataset
-4. Submit model weights
+$$
+\text{Rank}_{\text{overall}} = \sum_i^5 \text{Rank}^i * \text{weight}^i
+$$
+
+
+
+## Instructions
+
+### Set Up
+
+1. Follow [instruction](https://colab.research.google.com/drive/1OSj-Iyh9S91m4THjGsjf2wXkjmMnk4dx?usp=sharing) to set up HPC and singularity
+2. Clone repo, `cd` into repo
+3. `pip install -r requirements.txt`
+
+### Dataset
+The training data can be found in `/scratch/DL24FA/dl_final_project/train/states.npy` and `/scratch/DL24FA/dl_final_project/train/actions.npy`. States have shape (num_trajectories, trajectory_length, 2, 64, 64). The observation is a two-channel image. 1st channel representing agent, and 2nd channel representing border and walls.
+Actions have shape (num_trajectories, trajectory_length-1, 2), each action is a (delta x, delta y) vector specifying position shift from previous global position of agent. 
+
+Probing train dataset can be found in `/scratch/DL24FA/dl_final_project/probe_normal/train`.
+
+Probing val datasets can be found in `/scratch/DL24FA/dl_final_project/probe_normal/val` and `/scratch/DL24FA/dl_final_project/probe_wall/val`
+
+### Training
+Please implement your own training script and model architecture as a part of this existing codebase.
+
+### Evaluation
+The probing evaluation is already implemented for you. It's inside `main.py`. You just need to add / change some code marked by #TODOs, namely initialize, load your model.
+
+Just run `python main.py` to evaluate your model. 
+
+### Submission
+Create the zipped version of following folder for submission:
+
+DL_Final_Proj/    
+├── main.py    
+├── evaluator.py    
+├── ... (other files including your new ones)    
+├── model_weights.pth/    
+└── team_name.txt  
+
+
+Make sure `main.py` is runnable with your trained model, including python command load your model weights. 
+
+team_name.txt contains the name of your team and members' NETIDs.
+
+Upload the zipped file to cloud storage and email the download link to TA wz1232@nyu.edu. The TA should be able to run `wget {link}`, unzip the folder, and run `python main.py` to get validation results. Failing to do so will result in substracted scores or even zero points. 
+
+**Submission deadline is 12/15**. Winners will be picked and asked to present their work on last class day 12/18.

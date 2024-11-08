@@ -13,8 +13,7 @@ def get_device():
 
 
 def load_data(device):
-    # TODO: Replace with your own path
-    data_path = "/vast/wz1232/dl_final_project_2"
+    data_path = "/scratch/DL24FA/dl_final_project"
 
     probe_train_ds = create_wall_dataloader(
         data_path=f"{data_path}/probe_normal/train",
