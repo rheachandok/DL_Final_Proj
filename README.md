@@ -10,9 +10,13 @@ Joint embedding prediction architecture (JEPA) is an energy based architecture f
 More formally, in the context of this problem, given agent trajectory $(obs_0, action_0, obs_1, action_1, ..., obs_{h-1}, action_{h-1}, obs_h)$, we specify a recurrent JEPA architecture as: 
 
 $$
-\text{Encoder}: \hat{e}_0 = e_0 = \text{Enc}_\theta(obs_0) \\
-\text{Predictor}: \hat{e}_t = \text{Pred}_\phi(\hat{e}_{t-1}, a_{t-1}) \\
+\text{Encoder}: \hat{e}_0 = e_0 = \text{Enc}_\theta(obs_0)
 $$
+$$
+\text{Predictor}: \hat{e}_t = \text{Pred}_\phi(\hat{e}_{t-1}, a_{t-1})
+$$
+
+
 
 Where $\hat{e}_t$ is the predicted representation at timestep $t$, and $e_t$ is the encoder output at timestep $t$.
 
@@ -25,7 +29,9 @@ $$
 The JEPA training objective would be to minimize the distance between predicted representation $\hat{e_t}$ and the target representation $\bar{e_t}$, where:
 
 $$
-\text{Target Encoder}: \bar{e}_t = \text{Enc}^{\top}_{\psi}(obs_t) \\
+\text{Target Encoder}: \bar{e}_t = \text{Enc}^{\top}_{\psi}(obs_t)
+$$
+$$
 \text{min } \sum_{t=1}^{h}d(\hat{e_t}, \bar{e_t})
 $$
 
