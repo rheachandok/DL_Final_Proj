@@ -107,7 +107,7 @@ Probing val datasets can be found in `/scratch/DL24FA/dl_final_project/probe_nor
 Please implement your own training script and model architecture as a part of this existing codebase.
 
 ### Evaluation
-The probing evaluation is already implemented for you. It's inside `main.py`. You just need to add / change some code marked by #TODOs, namely initialize, load your model.
+The probing evaluation is already implemented for you. It's inside `main.py`. You just need to add change some code marked by #TODOs, namely initialize, load your model. You can also change how your model handle forward pass marked by #TODOs inside `evaluator.py`. **DO NOT** change any other parts of `main.py` and `evaluator.py`.
 
 Just run `python main.py` to evaluate your model. 
 
