@@ -14,7 +14,7 @@ More formally, in the context of this problem, given agent trajectory $(obs_0, a
   <img src="assets/eq_one.png" alt="Alt Text" width="550"/>
 </div>
 
-Where $\hat{e}_t$ is the predicted representation at timestep $t$, and $e_t$ is the encoder output at timestep $t$.
+Where $\hat{e_t}$ is the predicted representation at timestep $t$, and $e_t$ is the encoder output at timestep $t$.
 
 The architecture may also be teacher-forcing (non-recurrent):
 
