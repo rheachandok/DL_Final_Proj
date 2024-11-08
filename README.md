@@ -9,8 +9,7 @@ Joint embedding prediction architecture (JEPA) is an energy based architecture f
 
 More formally, in the context of this problem, given agent trajectory $(obs_0, action_0, obs_1, action_1, ..., obs_{h-1}, action_{h-1}, obs_h)$, we specify a recurrent JEPA architecture as
 
-$\text{Encoder}: \hat{e_0} = e_0 = \text{Enc}_\theta(obs_0)$
-
+$\text{Encoder}: \hat{e_0} = e_0 = \text{Enc}_\theta(obs_0)$\
 $\text{Predictor}: \hat{e_t} = \text{Pred}_\phi(\hat{e_{t-1}}, a_{t-1})$
 
 
