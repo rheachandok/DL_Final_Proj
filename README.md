@@ -11,7 +11,7 @@ More formally, in the context of this problem, given agent trajectory $(obs_0, a
 
 $\text{Encoder}: \hat{e_0} = e_0 = \text{Enc}_\theta(obs_0)$
 
-$\text{Encoder}: \hat{e_0} = e_0 = \text{Enc}_\theta(obs_0)$
+$\text{Predictor}: \hat{e_t} = \text{Enc}_\theta(obs_0)$
 
 $\text{Predictor}: \hat{e_t} = \text{Pred}_\phi(\hat{e_{t-1}}, a_{t-1})$
 
