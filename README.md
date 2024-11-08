@@ -13,7 +13,7 @@ $e^1$
 
 $\hat{e_0} = e_0 = Enc_\theta(obs_0)$ 
 
-$\text{Encoder}: \hat{e}_0 = e_0 = \text{Enc}_\theta(obs_0)$
+$\text{Encoder}: \hat{e_0} = e_0 = \text{Enc}_\theta(obs_0)$
 
 $
 \text{Predictor}: \hat{e}_t = \text{Pred}_\phi(\hat{e}_{t-1}, a_{t-1})
