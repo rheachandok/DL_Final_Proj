@@ -7,9 +7,7 @@ In this project, you will train a JEPA world model on a set of pre-collected tra
 ### JEPA
 Joint embedding prediction architecture (JEPA) is an energy based architecture for self supervised learning first proposed by [LeCun (2022)](https://openreview.net/pdf?id=BZ5a1r-kVsf). Essentially, it works by asking the model to predict its own representations of future observations.
 
-More formally, in the context of this problem, given agent trajectory $(obs_0, action_0, obs_1, action_1, ..., obs_{h-1}, action_{h-1}, obs_h)$, we specify a recurrent JEPA architecture as: 
-
-$\text{Encoder}: \hat{e}_0 = e_0 = \text{Enc}_\theta(obs_0)$
+More formally, in the context of this problem, given agent trajectory $(obs_0, action_0, obs_1, action_1, ..., obs_{h-1}, action_{h-1}, obs_h)$, we specify a recurrent JEPA architecture as: $\text{Encoder}: \hat{e}_0 = e_0 = \text{Enc}_\theta(obs_0)$
 
 $
 \text{Predictor}: \hat{e}_t = \text{Pred}_\phi(\hat{e}_{t-1}, a_{t-1})
