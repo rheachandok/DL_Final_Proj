@@ -57,7 +57,7 @@ Here are the constraints:
 ### Evaluation
 How do we evaluate the quality of our encoded and predicted representations?
 
-One way to do it is through probing - we can see how well we can extract certain ground truth informations from the learned representations. In this particular setting, we will unroll the JEPA world model recurrently $N$ times into the future, conditioned on initial observation $obs_0$ and action sequence $a_0, a_1, ..., a_{N-1}$ (same process as recurrent JEPA described earlier), generating predicted representations $\hat{e}_1, \hat{e}_2, \hat{e}_3, ..., \hat{e}_{N}$. Then, we will train a 2-layer MLP to extract the ground truth agent (x,y) coordinates from these predicted representations:
+One way to do it is through probing - we can see how well we can extract certain ground truth informations from the learned representations. In this particular setting, we will unroll the JEPA world model recurrently $N$ times into the future, conditioned on initial observation $obs_0$ and action sequence $a_0, a_1, ..., a_{N-1}$ (same process as recurrent JEPA described earlier), generating predicted representations $\hat{e_1}, \hat{e_2}, \hat{e_3}, ..., \hat{e_N}$. Then, we will train a 2-layer MLP to extract the ground truth agent (x,y) coordinates from these predicted representations:
 
 $$
 \text{min } \sum_{t=1}^{N} \text{MSE}(\text{Prober}(\hat{e}_t), (x,y)_t)
