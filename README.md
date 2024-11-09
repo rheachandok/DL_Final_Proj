@@ -32,7 +32,7 @@ The JEPA training objective would be to minimize the distance between predicted 
 </div>
 
 
-Where the Target Encoder $\text{Enc}^\top_\psi$ may be identical to Encoder ([VicReg](https://arxiv.org/pdf/2105.04906), [Barlow Twins](https://arxiv.org/pdf/2103.03230)), or not ([BYOL](https://arxiv.org/pdf/2006.07733))
+Where the Target Encoder $\text{Enc}^\top_\psi$ may be identical to Encoder $\text{Enc}_{\theta}$ ([VicReg](https://arxiv.org/pdf/2105.04906), [Barlow Twins](https://arxiv.org/pdf/2103.03230)), or not ([BYOL](https://arxiv.org/pdf/2006.07733))
 
 And where $d(x, y)$ is some distance function. However, minimizing the above objective naively is problematic because it can lead to representation collapse (why?). There are techniques (such as ones mentioned above) to prevent this collapse by adding additional objectives or specific architectural choices. Feel free to experiment.
 
