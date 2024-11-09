@@ -34,7 +34,7 @@ The JEPA training objective would be to minimize the distance between predicted 
 
 Where the Target Encoder $\text{Enc}^\top_\psi$ may be identical to Encoder $\text{Enc}_{\theta}$ ([VicReg](https://arxiv.org/pdf/2105.04906), [Barlow Twins](https://arxiv.org/pdf/2103.03230)), or not ([BYOL](https://arxiv.org/pdf/2006.07733))
 
-And where $d(x, y)$ is some distance function. However, minimizing the above objective naively is problematic because it can lead to representation collapse (why?). There are techniques (such as ones mentioned above) to prevent this collapse by adding additional objectives or specific architectural choices. Feel free to experiment.
+$d(x, y)$ is some distance function. However, minimizing the above objective naively is problematic because it can lead to representation collapse (why?). There are techniques (such as ones mentioned above) to prevent this collapse by adding additional objectives or specific architectural choices. Feel free to experiment.
 
 Here's a diagram illustrating a recurrent JEPA for 4 timesteps:
 
@@ -46,12 +46,12 @@ The dataset consists of random trajectories collected from a toy environment con
 <img src="assets/two_rooms.png" alt="Alt Text" width="500"/>
 
 ### Task
-Your task is to implement train a JEPA architecture on dataset of 2.5M frames of exploratory trajectories collected from an agent in an environment with two rooms. Then, your model will be evaluated based on how well the predicted representations will capture the true (x, y) coordinate of the agent. 
+Your task is to implement and train a JEPA architecture on a dataset of 2.5M frames of exploratory trajectories (see images above). Then, your model will be evaluated based on how well the predicted representations will capture the true (x, y) coordinate of the agent. 
 
 Here are the constraints:
 * It has to be a JEPA architecture - namely you have to train it by minimizing the distance between predictions and targets in the *representation space*, while preventing collapse.
 * You can try various methods of preventing collapse, **except** image reconstruction. That is - you cannot reconstruct target images as a part of your objective, such as in the case of [MAE](https://arxiv.org/pdf/2111.06377).
-* You have to rely only on the provided data in folder `/train`. However you are allowed to apply image augmentation.
+* You have to rely only on the provided data in folder `/scratch/DL24FA/train`. However you are allowed to apply image augmentation.
 
 
 ### Evaluation
@@ -65,7 +65,7 @@ $$
 
 The evaluation code is already implemented, so you just need to plug in your trained model to run it.
 
-The evaluation script will train the prober on 0.17M frames of agent trajectories loaded from folder `/probe_normal/train`, and evaluate it on validation sets to report the mean-squared error between probed and true global agent coordinates. There will be two *known* validation sets loaded from folders `/probe_normal/val` and `/probe_wall/val`. The first validation set contains similar trajectories from the training set, while the second consists of trajectories with agent running straight towards the wall and sometimes door, this tests how well your model is able to learn the dynamics of stopping at the wall.
+The evaluation script will train the prober on 0.17M frames of agent trajectories loaded from folder `/scratch/DL24FA/probe_normal/train`, and evaluate it on validation sets to report the mean-squared error between probed and true global agent coordinates. There will be two *known* validation sets loaded from folders `/scratch/DL24FA/probe_normal/val` and `/scratch/DL24FA/probe_wall/val`. The first validation set contains similar trajectories from the training set, while the second consists of trajectories with agent running straight towards the wall and sometimes door, this tests how well your model is able to learn the dynamics of stopping at the wall.
 
 There are two other validation sets that are not released but will be used to test how good your model is for long-horizon predictions, and how well your model generalize to unseen novel layouts (detail: during training we exclude the wall from showing up at certain range of x-axes, we want to see how well your model performs when the wall is placed at those x-axes).
 
@@ -96,12 +96,12 @@ $$
 3. `pip install -r requirements.txt`
 
 ### Dataset
-The training data can be found in `/scratch/DL24FA/dl_final_project/train/states.npy` and `/scratch/DL24FA/dl_final_project/train/actions.npy`. States have shape (num_trajectories, trajectory_length, 2, 64, 64). The observation is a two-channel image. 1st channel representing agent, and 2nd channel representing border and walls.
+The training data can be found in `/scratch/DL24FA/train/states.npy` and `/scratch/DL24FA/train/actions.npy`. States have shape (num_trajectories, trajectory_length, 2, 64, 64). The observation is a two-channel image. 1st channel representing agent, and 2nd channel representing border and walls.
 Actions have shape (num_trajectories, trajectory_length-1, 2), each action is a (delta x, delta y) vector specifying position shift from previous global position of agent. 
 
-Probing train dataset can be found in `/scratch/DL24FA/dl_final_project/probe_normal/train`.
+Probing train dataset can be found in `/scratch/DL24FA/probe_normal/train`.
 
-Probing val datasets can be found in `/scratch/DL24FA/dl_final_project/probe_normal/val` and `/scratch/DL24FA/dl_final_project/probe_wall/val`
+Probing val datasets can be found in `/scratch/DL24FA/probe_normal/val` and `/scratch/DL24FA/probe_wall/val`
 
 ### Training
 Please implement your own training script and model architecture as a part of this existing codebase.
