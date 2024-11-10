@@ -77,7 +77,7 @@ Each team will be evaluated on 5 criterias:
 2. MSE error on `probe_wall`. **Weight** 1
 3. MSE error on long horizon probing test. **Weight** 1
 4. MSE error on out of domain wall probing test. **Weight** 1
-5. Parameter count of your model (less parameters --> more points). **Weight** 0.5
+5. Parameter count of your model (less parameters --> more points). **Weight** 0.25
 
 The teams are first ranked according to each criteria independently. A particular team's overall ranking is the weighted sum of the 5 rankings:
 
