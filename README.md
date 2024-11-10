@@ -53,6 +53,7 @@ Here are the constraints:
 * You can try various methods of preventing collapse, **except** image reconstruction. That is - you cannot reconstruct target images as a part of your objective, such as in the case of [MAE](https://arxiv.org/pdf/2111.06377).
 * You have to rely only on the provided data in folder `/scratch/DL24FA/train`. However you are allowed to apply image augmentation.
 
+**Failing to meet the above constraints will result in deducted points or even zero points**
 
 ### Evaluation
 How do we evaluate the quality of our encoded and predicted representations?
@@ -62,6 +63,8 @@ One way to do it is through probing - we can see how well we can extract certain
 $$
 \text{min } \sum_{t=1}^{N} \text{MSE}(\text{Prober}(\hat{e}_t), (x,y)_t)
 $$
+
+The smaller the MSE loss on the probing validation dataset, the better our learned representations are at capturing the particular information we care about - in this case the agent location. (We can also probe for other things such as wall or door locations, but we only focus on agent location here).
 
 The evaluation code is already implemented, so you just need to plug in your trained model to run it.
 
@@ -126,6 +129,6 @@ Make sure `main.py` is runnable with your trained model, including python comman
 
 team_name.txt contains the name of your team and members' NETIDs.
 
-Upload the zipped file to cloud storage and email the download link to TA wz1232@nyu.edu. The TA should be able to run `wget {link}`, unzip the folder, and run `python main.py` to get validation results. Failing to do so will result in substracted scores or even zero points. 
+Upload the zipped file to cloud storage and email the download link to TA wz1232@nyu.edu with subject line **"DL Final Project Submission. {Team Name}"**. The TA should be able to run `wget {link}`, unzip the folder, and run `python main.py` to get validation results. Failing to do so will result in substracted scores or even zero points. 
 
 **Submission deadline is 12/15**. Winners will be picked and asked to present their work on last class day 12/18.
