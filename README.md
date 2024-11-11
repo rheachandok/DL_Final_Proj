@@ -14,7 +14,7 @@ More formally, in the context of this problem, given agent trajectory $(obs_0, a
   <img src="assets/eq_one.png" alt="Alt Text" width="550"/>
 </div>
 
-Where $\hat{e}_t$ is the predicted representation at timestep $t$, and $e_t$ is the encoder output at timestep $t$.
+Where $\tilde{e}_t$ is the predicted representation at timestep $t$, and $e_t$ is the encoder output at timestep $t$.
 
 The architecture may also be teacher-forcing (non-recurrent):
 
@@ -25,14 +25,14 @@ The architecture may also be teacher-forcing (non-recurrent):
 
 
 
-The JEPA training objective would be to minimize the distance between predicted representation $\hat{e_t}$ and the target representation $\bar{e_t}$, where:
+The JEPA training objective would be to minimize the distance between predicted representation $\tilde{e_t}$ and the target representation $\bar{e_t}$, where:
 
 <div align="center">
   <img src="assets/eq_three.png" alt="Alt Text" width="550"/>
 </div>
 
 
-Where the Target Encoder $\text{Enc}^\top_\psi$ may be identical to Encoder $\text{Enc}_{\theta}$ ([VicReg](https://arxiv.org/pdf/2105.04906), [Barlow Twins](https://arxiv.org/pdf/2103.03230)), or not ([BYOL](https://arxiv.org/pdf/2006.07733))
+Where the Target Encoder $\text{Enc}_\psi$ may be identical to Encoder $\text{Enc}_{\theta}$ ([VicReg](https://arxiv.org/pdf/2105.04906), [Barlow Twins](https://arxiv.org/pdf/2103.03230)), or not ([BYOL](https://arxiv.org/pdf/2006.07733))
 
 $d(x, y)$ is some distance function. However, minimizing the above objective naively is problematic because it can lead to representation collapse (why?). There are techniques (such as ones mentioned above) to prevent this collapse by adding additional objectives or specific architectural choices. Feel free to experiment.
 
@@ -58,17 +58,17 @@ Here are the constraints:
 ### Evaluation
 How do we evaluate the quality of our encoded and predicted representations?
 
-One way to do it is through probing - we can see how well we can extract certain ground truth informations from the learned representations. In this particular setting, we will unroll the JEPA world model recurrently $N$ times into the future, conditioned on initial observation $obs_0$ and action sequence $a_0, a_1, ..., a_{N-1}$ (same process as recurrent JEPA described earlier), generating predicted representations $\hat{e_1}, \hat{e_2}, \hat{e_3}, ..., \hat{e_N}$. Then, we will train a 2-layer MLP to extract the ground truth agent (x,y) coordinates from these predicted representations:
+One way to do it is through probing - we can see how well we can extract certain ground truth informations from the learned representations. In this particular setting, we will unroll the JEPA world model recurrently $N$ times into the future, conditioned on initial observation $obs_0$ and action sequence $a_0, a_1, ..., a_{N-1}$ (same process as recurrent JEPA described earlier), generating predicted representations $\tilde{e_1}, \tilde{e_2}, \tilde{e_3}, ..., \tilde{e_N}$. Then, we will train a 2-layer FC to extract the ground truth agent (x,y) coordinates from these predicted representations:
 
 $$
-\text{min } \sum_{t=1}^{N} \text{MSE}(\text{Prober}(\hat{e}_t), (x,y)_t)
+\text{min } \sum_{t=1}^{N} \| \text{Prober}(\tilde{e}_t) - (x,y)_t\|_2^2
 $$
 
 The smaller the MSE loss on the probing validation dataset, the better our learned representations are at capturing the particular information we care about - in this case the agent location. (We can also probe for other things such as wall or door locations, but we only focus on agent location here).
 
 The evaluation code is already implemented, so you just need to plug in your trained model to run it.
 
-The evaluation script will train the prober on 0.17M frames of agent trajectories loaded from folder `/scratch/DL24FA/probe_normal/train`, and evaluate it on validation sets to report the mean-squared error between probed and true global agent coordinates. There will be two *known* validation sets loaded from folders `/scratch/DL24FA/probe_normal/val` and `/scratch/DL24FA/probe_wall/val`. The first validation set contains similar trajectories from the training set, while the second consists of trajectories with agent running straight towards the wall and sometimes door, this tests how well your model is able to learn the dynamics of stopping at the wall.
+The evaluation script will train the prober on 170k frames of agent trajectories loaded from folder `/scratch/DL24FA/probe_normal/train`, and evaluate it on validation sets to report the mean-squared error between probed and true global agent coordinates. There will be two *known* validation sets loaded from folders `/scratch/DL24FA/probe_normal/val` and `/scratch/DL24FA/probe_wall/val`. The first validation set contains similar trajectories from the training set, while the second consists of trajectories with agent running straight towards the wall and sometimes door, this tests how well your model is able to learn the dynamics of stopping at the wall.
 
 There are two other validation sets that are not released but will be used to test how good your model is for long-horizon predictions, and how well your model generalize to unseen novel layouts (detail: during training we exclude the wall from showing up at certain range of x-axes, we want to see how well your model performs when the wall is placed at those x-axes).
 
@@ -117,13 +117,14 @@ Just run `python main.py` to evaluate your model.
 ### Submission
 Create the zipped version of following folder for submission:
 
+```
 DL_Final_Proj/    
 ├── main.py    
 ├── evaluator.py    
 ├── ... (other files including your new ones)    
 ├── model_weights.pth    
 └── team_name.txt  
-
+```
 
 Make sure `main.py` is runnable with your trained model, including python command load your model weights. 
 
