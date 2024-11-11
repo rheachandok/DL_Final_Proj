@@ -74,7 +74,7 @@ How do we evaluate the quality of our encoded and predicted representations?
 One way to do it is through probing - we can see how well we can extract certain ground truth informations from the learned representations. In this particular setting, we will unroll the JEPA world model recurrently $N$ times into the future, conditioned on initial observation $obs_0$ and action sequence $a_0, a_1, ..., a_{N-1}$ (same process as recurrent JEPA described earlier), generating predicted representations $\tilde{e_1}, \tilde{e_2}, \tilde{e_3}, ..., \tilde{e_N}$. Then, we will train a 2-layer FC to extract the ground truth agent (x,y) coordinates from these predicted representations:
 
 $$
-\text{min } \sum_{t=1}^{N} \|\| \text{Prober}(\tilde{e}_t) - (x,y)_t\|\|_2^2
+\text{min } \sum_{t=1}^{N} \lVert \text{Prober}(\tilde{e}_t) - (x,y)_t \rVert _2^2
 $$
 
 The smaller the MSE loss on the probing validation dataset, the better our learned representations are at capturing the particular information we care about - in this case the agent location. (We can also probe for other things such as wall or door locations, but we only focus on agent location here).
