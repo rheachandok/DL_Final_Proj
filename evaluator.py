@@ -114,6 +114,7 @@ class ProbingEvaluator:
                 # TODO: Forward pass through your model
                 pred_encs = model(states=batch.states, actions=batch.actions)
                 pred_encs = pred_encs.transpose(0, 1)  # # BS, T, D --> T, BS, D
+                print("pred shape:", pred_encs.shape)
 
                 # Make sure pred_encs has shape (T, BS, D) at this point
                 ################################################################################
@@ -141,10 +142,13 @@ class ProbingEvaluator:
                         device=pred_encs.device,
                     )
 
+                    sample_timesteps = min(config.sample_timesteps, n_steps)
                     sampled_target_locs = torch.empty(bs, config.sample_timesteps, 2)
 
                     for i in range(bs):
-                        indices = torch.randperm(n_steps)[: config.sample_timesteps]
+                        indices = torch.randperm(n_steps)[:sample_timesteps]
+                        print(f"Indices for batch {i}: {indices}")  # Debugging statement
+                        print(f"Target shape: {target[i].shape}")    # Ensure target has the right shape
                         sampled_pred_encs[:, i, :] = pred_encs[indices, i, :]
                         sampled_target_locs[i, :] = target[i, indices]
 
