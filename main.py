@@ -3,6 +3,7 @@ from evaluator import ProbingEvaluator
 import torch
 from models import MockModel
 import glob
+from impl import JEPA
 
 
 def get_device():
@@ -37,14 +38,14 @@ def load_data(device):
     )
 
     probe_val_ds = {"normal": probe_val_normal_ds, "wall": probe_val_wall_ds}
-
     return probe_train_ds, probe_val_ds
 
 
 def load_model():
     """Load or initialize the model."""
     # TODO: Replace MockModel with your trained model
-    model = MockModel()
+    device = get_device()
+    model = JEPA(input_channels=2, hidden_dim=256, action_dim=2).to(device)
     return model
 
 
@@ -68,5 +69,10 @@ def evaluate_model(device, model, probe_train_ds, probe_val_ds):
 if __name__ == "__main__":
     device = get_device()
     probe_train_ds, probe_val_ds = load_data(device)
+    #for batch in probe_train_ds:
+        #states, locations, actions = batch
+        #print(states.shape)
+        #print(locations.shape)
+        #print(actions.shape)
     model = load_model()
     evaluate_model(device, model, probe_train_ds, probe_val_ds)
