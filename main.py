@@ -3,7 +3,7 @@ from evaluator import ProbingEvaluator
 import torch
 from models import MockModel
 import glob
-from impl import JEPA
+from impl import JEPA, train_model
 
 
 def get_device():
@@ -75,4 +75,6 @@ if __name__ == "__main__":
         #print(locations.shape)
         #print(actions.shape)
     model = load_model()
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+    train_model(model, probe_train_ds, optimizer, num_epochs=100, device=device)
     evaluate_model(device, model, probe_train_ds, probe_val_ds)
