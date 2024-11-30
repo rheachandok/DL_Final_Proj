@@ -5,7 +5,6 @@ from models import MockModel
 import glob
 from impl import JEPA, train_model
 
-
 def get_device():
     """Check for GPU availability."""
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -75,6 +74,16 @@ if __name__ == "__main__":
         #print(locations.shape)
         #print(actions.shape)
     model = load_model()
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
-    train_model(model, probe_train_ds, optimizer, num_epochs=100, device=device)
+    optimizer = torch.optim.Adam(
+        list(model.encoder.parameters()) + list(model.predictor.parameters()),
+        lr=1e-3
+    )
+    training = create_wall_dataloader(
+        data_path=f"/scratch/DL24FA/train",
+        probing=False,
+        device=device,
+        train=True,
+    )
+
+    train_model(model, training, optimizer, num_epochs=50, device=device)
     evaluate_model(device, model, probe_train_ds, probe_val_ds)

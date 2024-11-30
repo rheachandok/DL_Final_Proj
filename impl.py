@@ -30,19 +30,17 @@ class EncoderNetwork(nn.Module):
 class PredictorNetwork(nn.Module):
     def __init__(self, hidden_dim, action_dim):
         super(PredictorNetwork, self).__init__()
-        # Define GRU layer with input size as hidden_dim + action_dim and output as hidden_dim
-        self.gru = nn.GRU(input_size=hidden_dim + action_dim, hidden_size=hidden_dim, batch_first=True)
-        # Linear layer to generate the next latent state from GRU output
-        self.fc = nn.Linear(hidden_dim, hidden_dim)
+        self.fc1 = nn.Linear(hidden_dim + action_dim, hidden_dim)
+        self.relu = nn.ReLU()
+        self.fc2 = nn.Linear(hidden_dim, hidden_dim)
 
     def forward(self, state, action):
-        # Concatenate the current latent state with the action along the last dimension
-        x = torch.cat([state, action], dim=-1).unsqueeze(1)  # [batch_size, 1, hidden_dim + action_dim]
-        # Pass through GRU
-        x, _ = self.gru(x)  # Output size: [batch_size, 1, hidden_dim]
-        # Remove the sequence dimension and pass through fully connected layer
-        x = self.fc(x.squeeze(1))  # Output size: [batch_size, hidden_dim]
+        x = torch.cat([state, action], dim=-1)  # Shape: [batch_size, hidden_dim + action_dim]
+        x = self.fc1(x)
+        x = self.relu(x)
+        x = self.fc2(x)  # Shape: [batch_size, hidden_dim]
         return x
+
 
 class JEPA(nn.Module):
 
@@ -135,13 +133,19 @@ def train_model(model, dataloader, optimizer, num_epochs=10, momentum=0.99, devi
             for states, locations, actions in dataloader:
                 states = states.to(device)  # Shape: [batch_size, seq_len, channels, height, width]
                 actions = actions.to(device)  # Shape: [batch_size, seq_len - 1, action_dim]
-
+                print(f"States shape: {states.shape}")
+                print(f"Actions shape: {actions.shape}")
+                print(locations)
+                # Ensure that actions are correctly loaded
+                print(f"Actions mean: {actions.mean().item()}, std: {actions.std().item()}")
+                # Proceed with training steps
                 optimizer.zero_grad()
 
                 # Forward pass with return_targets=True to get both predicted and target states
                 predicted_states, target_states = model(states, actions, return_targets=True)
                 # predicted_states and target_states shape: [batch_size, seq_len, hidden_dim]
-
+                print(f"Predicted states: {predicted_states}")
+                print(f"Target states: {target_states}")
                 # Flatten the representations to combine batch and sequence dimensions
                 batch_size, seq_len, hidden_dim = predicted_states.size()
                 predicted_states_flat = predicted_states.view(batch_size * seq_len, hidden_dim)
