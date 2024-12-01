@@ -8,22 +8,30 @@ class EncoderNetwork(nn.Module):
         super(EncoderNetwork, self).__init__()
         # Convolutional Layers
         self.conv1 = nn.Conv2d(input_channels, 32, kernel_size=3, stride=2, padding=1)
+        self.bn1 = nn.BatchNorm2d(32)
         self.conv2 = nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1)
+        self.bn2 = nn.BatchNorm2d(64)
         self.conv3 = nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1)
-        # Compute the final flattened size after convolutions
-
-        self.flatten_size = 128 * 9 * 9  # 128 channels with 9x9 feature maps (after 3 strides of 2 from 65x65)
+        self.bn3 = nn.BatchNorm2d(128)
         # Fully Connected Layer
-        self.fc = nn.Linear(self.flatten_size, hidden_dim)
+        self.fc = nn.Linear(128 * 9 * 9, hidden_dim)
+        self.fc_bn = nn.BatchNorm1d(hidden_dim)
+        # Projection Head
+        self.projector = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.BatchNorm1d(hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim)
+        )
 
     def forward(self, x):
-        # Pass through convolutional layers
-        x = F.relu(self.conv1(x))  # [batch_size, 32, 33, 33]
-        x = F.relu(self.conv2(x))  # [batch_size, 64, 17, 17]
-        x = F.relu(self.conv3(x))  # [batch_size, 128, 9, 9]
-        # Flatten and pass through fully connected layer
-        x = x.view(x.size(0), -1)  # Flatten to [batch_size, 128 * 9 * 9]
-        x = self.fc(x)             # Output latent representation [batch_size, hidden_dim]
+        x = F.relu(self.bn1(self.conv1(x)))
+        x = F.relu(self.bn2(self.conv2(x)))
+        x = F.relu(self.bn3(self.conv3(x)))
+        x = x.view(x.size(0), -1)
+        x = self.fc_bn(self.fc(x))
+        x = F.relu(x)
+        x = self.projector(x)
         return x
 
 
@@ -31,14 +39,20 @@ class PredictorNetwork(nn.Module):
     def __init__(self, hidden_dim, action_dim):
         super(PredictorNetwork, self).__init__()
         self.fc1 = nn.Linear(hidden_dim + action_dim, hidden_dim)
+        self.bn1 = nn.BatchNorm1d(hidden_dim)
         self.relu = nn.ReLU()
+        # Projection Head
         self.fc2 = nn.Linear(hidden_dim, hidden_dim)
+        self.bn2 = nn.BatchNorm1d(hidden_dim)
 
     def forward(self, state, action):
-        x = torch.cat([state, action], dim=-1)  # Shape: [batch_size, hidden_dim + action_dim]
+        x = torch.cat([state, action], dim=-1)
         x = self.fc1(x)
+        x = self.bn1(x)
         x = self.relu(x)
-        x = self.fc2(x)  # Shape: [batch_size, hidden_dim]
+        x = self.fc2(x)
+        x = self.bn2(x)
+        x = self.relu(x)
         return x
 
 
@@ -109,18 +123,7 @@ def compute_loss(predicted_states, target_states):
 
 def train_model(model, dataloader, optimizer, num_epochs=10, momentum=0.99, device='cuda'):
     """
-    Trains the JEPA model using the BYOL framework with tqdm progress bars.
-
-    Args:
-        model: The JEPA model to be trained.
-        dataloader: DataLoader providing the training data.
-        optimizer: Optimizer for updating the model parameters.
-        num_epochs (int): Number of training epochs.
-        momentum (float): Momentum coefficient for updating the target encoder.
-        device (str): Device to run the training on ('cuda' or 'cpu').
-
-    Returns:
-        None
+    Trains the JEPA model using the BYOL framework with tqdm progress bars and validations.
     """
     model = model.to(device)
 
@@ -130,32 +133,68 @@ def train_model(model, dataloader, optimizer, num_epochs=10, momentum=0.99, devi
 
         # Initialize tqdm progress bar for batches
         with tqdm(total=len(dataloader), desc=f"Epoch [{epoch+1}/{num_epochs}]", unit='batch') as pbar:
-            for states, locations, actions in dataloader:
+            for states, _, actions in dataloader:
                 states = states.to(device)  # Shape: [batch_size, seq_len, channels, height, width]
                 actions = actions.to(device)  # Shape: [batch_size, seq_len - 1, action_dim]
+
+                # **Validation 1: Verify Data Integrity**
+                # Check shapes
                 print(f"States shape: {states.shape}")
                 print(f"Actions shape: {actions.shape}")
-                print(locations)
-                # Ensure that actions are correctly loaded
+                # Check for NaNs or zeros
+                assert not torch.isnan(states).any(), "NaNs detected in states."
+                assert not torch.isnan(actions).any(), "NaNs detected in actions."
+                assert states.abs().sum().item() != 0, "States tensor is all zeros."
+                assert actions.abs().sum().item() != 0, "Actions tensor is all zeros."
+                # Check data statistics
+                print(f"States mean: {states.mean().item()}, std: {states.std().item()}")
                 print(f"Actions mean: {actions.mean().item()}, std: {actions.std().item()}")
-                # Proceed with training steps
+
                 optimizer.zero_grad()
 
                 # Forward pass with return_targets=True to get both predicted and target states
                 predicted_states, target_states = model(states, actions, return_targets=True)
                 # predicted_states and target_states shape: [batch_size, seq_len, hidden_dim]
-                print(f"Predicted states: {predicted_states}")
-                print(f"Target states: {target_states}")
+
+                # **Validation 2: Inspect Model Outputs**
+                # Print mean and std of predicted and target states
+                print(f"Predicted states mean: {predicted_states.mean().item()}, std: {predicted_states.std().item()}")
+                print(f"Target states mean: {target_states.mean().item()}, std: {target_states.std().item()}")
+
+                # Compute difference between predicted and target states
+                difference = (predicted_states - target_states).abs()
+                print(f"Difference mean: {difference.mean().item()}, max: {difference.max().item()}")
+
                 # Flatten the representations to combine batch and sequence dimensions
                 batch_size, seq_len, hidden_dim = predicted_states.size()
                 predicted_states_flat = predicted_states.view(batch_size * seq_len, hidden_dim)
                 target_states_flat = target_states.view(batch_size * seq_len, hidden_dim)
 
+                # **Validation 3: Verify Loss Computation**
                 # Compute loss across all time steps and batch instances
                 loss = compute_loss(predicted_states_flat, target_states_flat)
 
+                # Print loss value
+                print(f"Loss before backward pass: {loss.item()}")
+
+                # Check for NaNs or Infs in loss
+                assert not torch.isnan(loss).any(), "NaNs detected in loss."
+                assert not torch.isinf(loss).any(), "Infs detected in loss."
+                assert loss.item() != 0, "Loss is zero."
+
                 # Backward pass and optimization
                 loss.backward()
+
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+
+                # **Validation 4: Confirm Gradients are Flowing**
+                for name, param in model.named_parameters():
+                    if param.grad is not None:
+                        grad_norm = param.grad.norm().item()
+                        print(f"Gradient norm for {name}: {grad_norm}")
+                    else:
+                        print(f"No gradient computed for {name}")
+
                 optimizer.step()
 
                 # Update the target encoder using exponential moving average
@@ -167,5 +206,13 @@ def train_model(model, dataloader, optimizer, num_epochs=10, momentum=0.99, devi
                 pbar.set_postfix({'Loss': f'{loss.item():.6f}'})
                 pbar.update(1)
 
-        avg_loss = total_loss / len(dataloader)
-        print(f"Epoch [{epoch+1}/{num_epochs}] Average Loss: {avg_loss:.6f}")
+            avg_loss = total_loss / len(dataloader)
+            print(f"Epoch [{epoch+1}/{num_epochs}] Average Loss: {avg_loss:.6f}")
+
+            # **Validation 5: Verify Target Encoder Updates**
+            with torch.no_grad():
+                diffs = []
+                for param, target_param in zip(model.encoder.parameters(), model.target_encoder.parameters()):
+                    diffs.append((param - target_param).abs().mean().item())
+                avg_diff = sum(diffs) / len(diffs)
+                print(f"Average parameter difference between encoder and target encoder: {avg_diff}")

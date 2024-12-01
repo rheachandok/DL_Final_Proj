@@ -65,6 +65,13 @@ def evaluate_model(device, model, probe_train_ds, probe_val_ds):
         print(f"{probe_attr} loss: {loss}")
 
 
+def weights_init(m):
+    if isinstance(m, torch.nn.Linear) or isinstance(m, torch.nn.Conv2d):
+        torch.nn.init.xavier_uniform_(m.weight)
+        if m.bias is not None:
+            torch.nn.init.zeros_(m.bias)
+
+
 if __name__ == "__main__":
     device = get_device()
     probe_train_ds, probe_val_ds = load_data(device)
@@ -76,7 +83,7 @@ if __name__ == "__main__":
     model = load_model()
     optimizer = torch.optim.Adam(
         list(model.encoder.parameters()) + list(model.predictor.parameters()),
-        lr=1e-3
+        lr=1e-4
     )
     training = create_wall_dataloader(
         data_path=f"/scratch/DL24FA/train",
@@ -84,6 +91,6 @@ if __name__ == "__main__":
         device=device,
         train=True,
     )
-
-    train_model(model, training, optimizer, num_epochs=50, device=device)
+    model.apply(weights_init)
+    train_model(model, training, optimizer, num_epochs=10, device=device)
     evaluate_model(device, model, probe_train_ds, probe_val_ds)
