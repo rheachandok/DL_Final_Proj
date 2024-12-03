@@ -20,6 +20,7 @@ class WallDataset:
         probing=False,
         device="cuda",
         transform=None,
+        normalization_params=None
     ):
         self.device = device
         self.states = np.load(f"{data_path}/states.npy", mmap_mode="r")
@@ -30,18 +31,19 @@ class WallDataset:
         else:
             self.locations = None
         self.transform = transform
+        self.normalization_params = normalization_params  # Dict containing 'mean' and 'std' for states, actions, locations
 
     def __len__(self):
         return len(self.states)
 
-    def __getitem__(self, i):
-        states = torch.from_numpy(self.states[i]).float().to(self.device)
-        actions = torch.from_numpy(self.actions[i]).float().to(self.device)
+     def __getitem__(self, i):
+        states = torch.from_numpy(self.states[i]).float()
+        actions = torch.from_numpy(self.actions[i]).float()
 
         if self.locations is not None:
-            locations = torch.from_numpy(self.locations[i]).float().to(self.device)
+            locations = torch.from_numpy(self.locations[i]).float()
         else:
-            locations = torch.empty(0).to(self.device)
+            locations = torch.empty(0)
 
         sample = {'states': states, 'actions': actions, 'locations': locations}
 
@@ -52,6 +54,15 @@ class WallDataset:
             locations = sample['locations']
 
         states = torch.stack(states)  # Shape: [seq_len, channels, height, width]
+
+        if self.normalization_params is not None:
+            # Normalize states (ensure mean and std have correct shapes)
+            states = (states - self.normalization_params['states_mean']) / self.normalization_params['states_std']
+            # Normalize actions
+            actions = (actions - self.normalization_params['actions_mean']) / self.normalization_params['actions_std']
+            # Normalize locations
+            if self.locations is not None:
+                locations = (locations - self.normalization_params['locations_mean']) / self.normalization_params['locations_std']
 
         # Move tensors to the specified device
         states = states.to(self.device)
