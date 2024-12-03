@@ -1,4 +1,4 @@
-from dataset import create_wall_dataloader, sequence_transforms
+from dataset import WallDataset, create_wall_dataloader, sequence_transforms
 from evaluator import ProbingEvaluator
 import torch
 from models import MockModel

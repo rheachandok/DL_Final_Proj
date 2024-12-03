@@ -32,18 +32,23 @@ class WallDataset:
             self.locations = None
         self.transform = transform
         self.normalization_params = normalization_params  # Dict containing 'mean' and 'std' for states, actions, locations
+        if normalization_params is not None:
+            self.normalization_params = {
+                key: val.to(self.device) if val is not None else None
+                for key, val in normalization_params.items()
+            }
 
     def __len__(self):
         return len(self.states)
 
-     def __getitem__(self, i):
-        states = torch.from_numpy(self.states[i]).float()
-        actions = torch.from_numpy(self.actions[i]).float()
+    def __getitem__(self, i):
+        states = torch.from_numpy(self.states[i]).float().to(self.device)
+        actions = torch.from_numpy(self.actions[i]).float().to(self.device)
 
         if self.locations is not None:
-            locations = torch.from_numpy(self.locations[i]).float()
+            locations = torch.from_numpy(self.locations[i]).float().to(self.device)
         else:
-            locations = torch.empty(0)
+            locations = torch.empty(0).to(self.device)
 
         sample = {'states': states, 'actions': actions, 'locations': locations}
 
