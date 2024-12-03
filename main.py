@@ -1,9 +1,10 @@
-from dataset import create_wall_dataloader
+from dataset import create_wall_dataloader, sequence_transforms
 from evaluator import ProbingEvaluator
 import torch
 from models import MockModel
 import glob
 from impl import JEPA, train_model
+from torchvision import transforms
 
 def get_device():
     """Check for GPU availability."""
@@ -45,6 +46,7 @@ def load_model():
     # TODO: Replace MockModel with your trained model
     device = get_device()
     model = JEPA(input_channels=2, hidden_dim=256, action_dim=2).to(device)
+    #model = MockModel()
     return model
 
 
@@ -85,11 +87,13 @@ if __name__ == "__main__":
         list(model.encoder.parameters()) + list(model.predictor.parameters()),
         lr=1e-4
     )
+
     training = create_wall_dataloader(
         data_path=f"/scratch/DL24FA/train",
         probing=False,
         device=device,
         train=True,
+        transform=sequence_transforms
     )
     model.apply(weights_init)
     train_model(model, training, optimizer, num_epochs=10, device=device)
