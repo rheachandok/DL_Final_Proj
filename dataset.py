@@ -57,8 +57,7 @@ class WallDataset:
             states = sample['states']
             actions = sample['actions']
             locations = sample['locations']
-
-        states = torch.stack(states)  # Shape: [seq_len, channels, height, width]
+            states = torch.stack(states)  # Shape: [seq_len, channels, height, width]
 
         if self.normalization_params is not None:
             # Normalize states (ensure mean and std have correct shapes)

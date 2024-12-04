@@ -69,15 +69,24 @@ class JEPA(nn.Module):
         # Set repr_dim to hidden_dim
         self.repr_dim = hidden_dim
 
+
     def _initialize_target_encoder(self):
         # Initialize target encoder parameters with encoder parameters
         for param, target_param in zip(self.encoder.parameters(), self.target_encoder.parameters()):
             target_param.data.copy_(param.data)
+        # Copy over the buffers (running_mean, running_var)
+        for buffer, target_buffer in zip(self.encoder.buffers(), self.target_encoder.buffers()):
+            target_buffer.data.copy_(buffer.data)
+
 
     def update_target_encoder(self, momentum=0.99):
         # Update target encoder parameters
         for param, target_param in zip(self.encoder.parameters(), self.target_encoder.parameters()):
             target_param.data = momentum * target_param.data + (1 - momentum) * param.data
+        # Update target encoder buffers
+        for buffer, target_buffer in zip(self.encoder.buffers(), self.target_encoder.buffers()):
+            target_buffer.data = buffer.data
+
 
     def forward(self, states, actions, return_targets=False):
         batch_size, seq_len, channels, height, width = states.size()  # Get the shape of the input states
@@ -90,7 +99,9 @@ class JEPA(nn.Module):
         predicted_states.append(s_t.unsqueeze(1))  # Add the latent state to predicted_states (unsqueeze to add time dimension)
 
         if return_targets:
-            s_t_target = self.target_encoder(states[:, 0])
+            self.target_encoder.eval()
+            with torch.no_grad():
+                s_t_target = self.target_encoder(states[:, 0])
             target_states.append(s_t_target.unsqueeze(1))
 
         # Step 2: Recurrently Predict Future Latent States
