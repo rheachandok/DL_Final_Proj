@@ -60,10 +60,10 @@ class JEPA(nn.Module):
       
         self.repr_dim = hidden_dim
 
-    def forward(self, states1, actions, states2=None, return_actual_embeddings=False):
-        embeddings1_pred = self._process_sequence(states1, actions)
+    def forward(self, states, actions, states2=None, return_actual_embeddings=False):
+        embeddings1_pred = self._process_sequence(states, actions)
         if return_actual_embeddings:
-            embeddings1_actual = self._encode_sequence(states1)
+            embeddings1_actual = self._encode_sequence(states)
         if states2 is not None:
             embeddings2_pred = self._process_sequence(states2, actions)
             if return_actual_embeddings:
@@ -88,13 +88,14 @@ class JEPA(nn.Module):
     def _process_sequence(self, states, actions):
         batch_size, seq_len, channels, height, width = states.size()
         predicted_states = []
+        print("Seq:",seq_len)
 
         # Encode the initial observation
         s_t = self.encoder(states[:, 0])
         predicted_states.append(s_t.unsqueeze(1))
 
         # Recurrently predict future latent states
-        for t in range(1, seq_len):
+        for t in range(1, 17):
             action_t = actions[:, t - 1]
             s_t = self.predictor(s_t, action_t)
             predicted_states.append(s_t.unsqueeze(1))
