@@ -1,3 +1,4 @@
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -19,8 +20,8 @@ class EncoderNetwork(nn.Module):
         # Projection Head
         self.projector = nn.Sequential(
             nn.Linear(hidden_dim, hidden_dim),
-            nn.BatchNorm1d(hidden_dim),
             nn.ReLU(),
+            nn.LayerNorm(hidden_dim),
             nn.Linear(hidden_dim, hidden_dim)
         )
 
@@ -43,18 +44,12 @@ class PredictorNetwork(nn.Module):
         self.relu = nn.ReLU()
         # Projection Head
         self.fc2 = nn.Linear(hidden_dim, hidden_dim)
-        self.bn2 = nn.BatchNorm1d(hidden_dim)
 
     def forward(self, state, action):
         x = torch.cat([state, action], dim=-1)
-        x = self.fc1(x)
-        x = self.bn1(x)
-        x = self.relu(x)
-        x = self.fc2(x)
-        x = self.bn2(x)
-        x = self.relu(x)
+        x = self.relu(self.bn1(self.fc1(x)))
+        x = self.relu(self.fc2(x))
         return x
-
 
 class JEPA(nn.Module):
 
@@ -62,168 +57,147 @@ class JEPA(nn.Module):
         super(JEPA, self).__init__()
         self.encoder = EncoderNetwork(input_channels, hidden_dim)
         self.predictor = PredictorNetwork(hidden_dim, action_dim)
-        # Define the target encoder network (for BYOL)
-        self.target_encoder = EncoderNetwork(input_channels, hidden_dim)
-        # Initialize target encoder parameters
-        self._initialize_target_encoder()
-        # Set repr_dim to hidden_dim
+      
         self.repr_dim = hidden_dim
 
-
-    def _initialize_target_encoder(self):
-        # Initialize target encoder parameters with encoder parameters
-        for param, target_param in zip(self.encoder.parameters(), self.target_encoder.parameters()):
-            target_param.data.copy_(param.data)
-        # Copy over the buffers (running_mean, running_var)
-        for buffer, target_buffer in zip(self.encoder.buffers(), self.target_encoder.buffers()):
-            target_buffer.data.copy_(buffer.data)
-
-
-    def update_target_encoder(self, momentum=0.99):
-        # Update target encoder parameters
-        for param, target_param in zip(self.encoder.parameters(), self.target_encoder.parameters()):
-            target_param.data = momentum * target_param.data + (1 - momentum) * param.data
-        # Update target encoder buffers
-        for buffer, target_buffer in zip(self.encoder.buffers(), self.target_encoder.buffers()):
-            target_buffer.data = buffer.data
-
-
-    def forward(self, states, actions, return_targets=False):
-        batch_size, seq_len, channels, height, width = states.size()  # Get the shape of the input states
-        predicted_states = []
-        target_states = []
-
-        # Step 1: Encode the Initial Observation
-        # Encode the first state to get the initial latent state
-        s_t = self.encoder(states[:, 0])  # Encode the first time step
-        predicted_states.append(s_t.unsqueeze(1))  # Add the latent state to predicted_states (unsqueeze to add time dimension)
-
-        if return_targets:
-            self.target_encoder.eval()
-            with torch.no_grad():
-                s_t_target = self.target_encoder(states[:, 0])
-            target_states.append(s_t_target.unsqueeze(1))
-
-        # Step 2: Recurrently Predict Future Latent States
-        for t in range(1, seq_len):
-            action_t = actions[:, t - 1]  # Get the action taken at time step t-1
-            s_t = self.predictor(s_t, action_t)  # Predict the next latent state
-            predicted_states.append(s_t.unsqueeze(1))  # Add the predicted latent state to the list
-
-            if return_targets:
-                s_t_target = self.target_encoder(states[:, t])
-                target_states.append(s_t_target.unsqueeze(1))
-
-        # Step 3: Concatenate Predicted States Across Time
-        predicted_states = torch.cat(predicted_states, dim=1)  # Concatenate along the time dimension
-
-        if return_targets:
-            target_states = torch.cat(target_states, dim=1)
-            return predicted_states, target_states
+    def forward(self, states1, actions, states2=None, return_actual_embeddings=False):
+        embeddings1_pred = self._process_sequence(states1, actions)
+        if return_actual_embeddings:
+            embeddings1_actual = self._encode_sequence(states1)
+        if states2 is not None:
+            embeddings2_pred = self._process_sequence(states2, actions)
+            if return_actual_embeddings:
+                embeddings2_actual = self._encode_sequence(states2)
+            if return_actual_embeddings:
+                return embeddings1_pred, embeddings2_pred, embeddings1_actual, embeddings2_actual
+            else:
+                return embeddings1_pred, embeddings2_pred
         else:
-            return predicted_states
+            if return_actual_embeddings:
+                return embeddings1_pred, embeddings1_actual
+            else:
+                return embeddings1_pred
 
-def compute_loss(predicted_states, target_states):
-    # Normalize the representations
-    predicted_states = F.normalize(predicted_states, dim=-1)
-    target_states = F.normalize(target_states.detach(), dim=-1)  # Stop-gradient on target
+    def _encode_sequence(self, states):
+        # Encode each state in the sequence
+        embeddings = [self.encoder(state) for state in states.transpose(0, 1)]
+        embeddings = torch.stack(embeddings, dim=1)  # Shape: [batch_size, seq_len, hidden_dim]
+        return embeddings
 
-    # Compute MSE loss
-    loss = F.mse_loss(predicted_states, target_states)
+
+    def _process_sequence(self, states, actions):
+        batch_size, seq_len, channels, height, width = states.size()
+        predicted_states = []
+
+        # Encode the initial observation
+        s_t = self.encoder(states[:, 0])
+        predicted_states.append(s_t.unsqueeze(1))
+
+        # Recurrently predict future latent states
+        for t in range(1, seq_len):
+            action_t = actions[:, t - 1]
+            s_t = self.predictor(s_t, action_t)
+            predicted_states.append(s_t.unsqueeze(1))
+
+        # Concatenate predicted states across time
+        predicted_states = torch.cat(predicted_states, dim=1)
+        return predicted_states
+
+
+def vicreg_loss(x, y, sim_weight=25.0, var_weight=25.0, cov_weight=1.0):
+    """
+    Compute the VicReg loss between two batches of embeddings x and y.
+
+    Args:
+        x (torch.Tensor): Embeddings from view 1, shape (batch_size, feature_dim)
+        y (torch.Tensor): Embeddings from view 2, shape (batch_size, feature_dim)
+        sim_weight (float): Weight for the invariance (similarity) term
+        var_weight (float): Weight for the variance term
+        cov_weight (float): Weight for the covariance term
+
+    Returns:
+        torch.Tensor: The computed VicReg loss
+    """
+    # Invariance loss (Mean Squared Error)
+    invariance_loss = F.mse_loss(x, y)
+
+    # Variance loss
+    def variance_loss(z):
+        std = torch.sqrt(z.var(dim=0) + 1e-4)
+        return torch.mean(F.relu(1 - std))
+
+    var_loss = variance_loss(x) + variance_loss(y)
+
+    # Covariance loss
+    def covariance_loss(z):
+        batch_size, feature_dim = z.size()
+        z = z - z.mean(dim=0)
+        cov = (z.T @ z) / (batch_size - 1)
+        off_diagonal = cov - torch.diag(torch.diag(cov))
+        return (off_diagonal ** 2).sum() / feature_dim
+
+    cov_loss = covariance_loss(x) + covariance_loss(y)
+
+    # Total VicReg loss
+    loss = sim_weight * invariance_loss + var_weight * var_loss + cov_weight * cov_loss
     return loss
 
-def train_model(model, dataloader, optimizer, num_epochs=10, momentum=0.99, device='cuda'):
+
+def train_model(model, dataloader, optimizer, num_epochs=10, device='cuda'):
     """
-    Trains the JEPA model using the BYOL framework with tqdm progress bars and validations.
+    Trains the JEPA model using VicReg.
     """
     model = model.to(device)
 
     for epoch in range(num_epochs):
         model.train()
-        total_loss = 0.0
+        total_loss = 0.0  # Accumulates the loss over the epoch
 
-        # Initialize tqdm progress bar for batches
         with tqdm(total=len(dataloader), desc=f"Epoch [{epoch+1}/{num_epochs}]", unit='batch') as pbar:
-            for states, _, actions in dataloader:
-                states = states.to(device)  # Shape: [batch_size, seq_len, channels, height, width]
-                actions = actions.to(device)  # Shape: [batch_size, seq_len - 1, action_dim]
-
-                # **Validation 1: Verify Data Integrity**
-                # Check shapes
-                print(f"States shape: {states.shape}")
-                print(f"Actions shape: {actions.shape}")
-                # Check for NaNs or zeros
-                assert not torch.isnan(states).any(), "NaNs detected in states."
-                assert not torch.isnan(actions).any(), "NaNs detected in actions."
-                assert states.abs().sum().item() != 0, "States tensor is all zeros."
-                assert actions.abs().sum().item() != 0, "Actions tensor is all zeros."
-                # Check data statistics
-                print(f"States mean: {states.mean().item()}, std: {states.std().item()}")
-                print(f"Actions mean: {actions.mean().item()}, std: {actions.std().item()}")
+            for states1, states2, actions in dataloader:
+                states1 = states1.to(device)
+                states2 = states2.to(device)
+                actions = actions.to(device)
 
                 optimizer.zero_grad()
 
-                # Forward pass with return_targets=True to get both predicted and target states
-                predicted_states, target_states = model(states, actions, return_targets=True)
-                # predicted_states and target_states shape: [batch_size, seq_len, hidden_dim]
+                # Forward pass with both augmented views
+                embeddings1_pred, embeddings2_pred, embeddings1_actual, embeddings2_actual = model(
+                    states1, actions, states2=states2, return_actual_embeddings=True
+                )
 
-                # **Validation 2: Inspect Model Outputs**
-                # Print mean and std of predicted and target states
-                print(f"Predicted states mean: {predicted_states.mean().item()}, std: {predicted_states.std().item()}")
-                print(f"Target states mean: {target_states.mean().item()}, std: {target_states.std().item()}")
+                # Flatten embeddings
+                batch_size, seq_len, hidden_dim = embeddings1_pred.size()
+                embeddings1_pred_flat = embeddings1_pred.view(batch_size * seq_len, hidden_dim)
+                embeddings2_pred_flat = embeddings2_pred.view(batch_size * seq_len, hidden_dim)
+                embeddings1_actual_flat = embeddings1_actual.view(batch_size * seq_len, hidden_dim)
+                embeddings2_actual_flat = embeddings2_actual.view(batch_size * seq_len, hidden_dim)
 
-                # Compute difference between predicted and target states
-                difference = (predicted_states - target_states).abs()
-                print(f"Difference mean: {difference.mean().item()}, max: {difference.max().item()}")
+                # Compute VicReg loss between predicted embeddings
+                vicreg_loss_value = vicreg_loss(embeddings1_pred_flat, embeddings2_pred_flat)
 
-                # Flatten the representations to combine batch and sequence dimensions
-                batch_size, seq_len, hidden_dim = predicted_states.size()
-                predicted_states_flat = predicted_states.view(batch_size * seq_len, hidden_dim)
-                target_states_flat = target_states.view(batch_size * seq_len, hidden_dim)
+                # Compute prediction loss between predicted and actual embeddings
+                loss_pred1 = F.mse_loss(embeddings1_pred_flat, embeddings1_actual_flat)
+                loss_pred2 = F.mse_loss(embeddings2_pred_flat, embeddings2_actual_flat)
+                prediction_loss = (loss_pred1 + loss_pred2) / 2
 
-                # **Validation 3: Verify Loss Computation**
-                # Compute loss across all time steps and batch instances
-                loss = compute_loss(predicted_states_flat, target_states_flat)
-
-                # Print loss value
-                print(f"Loss before backward pass: {loss.item()}")
-
-                # Check for NaNs or Infs in loss
-                assert not torch.isnan(loss).any(), "NaNs detected in loss."
-                assert not torch.isinf(loss).any(), "Infs detected in loss."
-                assert loss.item() != 0, "Loss is zero."
+                # Total loss
+                alpha = 1.0  # Hyperparameter to balance losses
+                batch_loss = vicreg_loss_value + alpha * prediction_loss
 
                 # Backward pass and optimization
-                loss.backward()
+                batch_loss.backward()
 
                 torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
 
-                # **Validation 4: Confirm Gradients are Flowing**
-                for name, param in model.named_parameters():
-                    if param.grad is not None:
-                        grad_norm = param.grad.norm().item()
-                        print(f"Gradient norm for {name}: {grad_norm}")
-                    else:
-                        print(f"No gradient computed for {name}")
-
                 optimizer.step()
-
-                # Update the target encoder using exponential moving average
-                model.update_target_encoder(momentum)
-
-                total_loss += loss.item()
-
+                
+                # Accumulate total loss
+                total_loss += batch_loss.item()
+                
                 # Update tqdm progress bar
-                pbar.set_postfix({'Loss': f'{loss.item():.6f}'})
+                pbar.set_postfix({'Loss': f'{batch_loss.item():.6f}'})
                 pbar.update(1)
 
             avg_loss = total_loss / len(dataloader)
             print(f"Epoch [{epoch+1}/{num_epochs}] Average Loss: {avg_loss:.6f}")
-
-            # **Validation 5: Verify Target Encoder Updates**
-            with torch.no_grad():
-                diffs = []
-                for param, target_param in zip(model.encoder.parameters(), model.target_encoder.parameters()):
-                    diffs.append((param - target_param).abs().mean().item())
-                avg_diff = sum(diffs) / len(diffs)
-                print(f"Average parameter difference between encoder and target encoder: {avg_diff}")
