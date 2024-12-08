@@ -1,204 +1,116 @@
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from tqdm import tqdm
 
-class EncoderNetwork(nn.Module):
-    def __init__(self, input_channels, hidden_dim):
-        super(EncoderNetwork, self).__init__()
-        # Convolutional Layers
-        self.conv1 = nn.Conv2d(input_channels, 32, kernel_size=3, stride=2, padding=1)
-        self.bn1 = nn.BatchNorm2d(32)
-        self.conv2 = nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1)
-        self.bn2 = nn.BatchNorm2d(64)
-        self.conv3 = nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1)
-        self.bn3 = nn.BatchNorm2d(128)
-        # Fully Connected Layer
-        self.fc = nn.Linear(128 * 9 * 9, hidden_dim)
-        self.fc_bn = nn.BatchNorm1d(hidden_dim)
-        # Projection Head
-        self.projector = nn.Sequential(
-            nn.Linear(hidden_dim, hidden_dim),
+class StateEncoder(nn.Module):
+    def __init__(self, latent_dim=128):
+        super(StateEncoder, self).__init__()
+        # A simple CNN: adjust layers as necessary
+        self.conv = nn.Sequential(
+            nn.Conv2d(2, 32, kernel_size=3, stride=1, padding=1),
             nn.ReLU(),
-            nn.LayerNorm(hidden_dim),
-            nn.Linear(hidden_dim, hidden_dim)
+            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),  # [B,64,33,33]
+            nn.ReLU(),
+            nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1), # [B,128,17,17]
+            nn.ReLU(),
+            nn.Conv2d(128, 128, kernel_size=3, stride=2, padding=1),# [B,128,9,9]
+            nn.ReLU(),
         )
+        # Flatten and linear layer to get latent_dim
+        self.fc = nn.Linear(128*9*9, latent_dim)
 
     def forward(self, x):
-        x = F.relu(self.bn1(self.conv1(x)))
-        x = F.relu(self.bn2(self.conv2(x)))
-        x = F.relu(self.bn3(self.conv3(x)))
-        x = x.view(x.size(0), -1)
-        x = self.fc_bn(self.fc(x))
-        x = F.relu(x)
-        x = self.projector(x)
+        # x: [B, 2, 65, 65]
+        h = self.conv(x)
+        h = h.view(h.size(0), -1)
+        h = self.fc(h)
+        return h # [B, latent_dim]
+
+
+class ActionEncoder(nn.Module):
+    def __init__(self, action_dim=2, latent_dim=32):
+        super(ActionEncoder, self).__init__()
+        self.fc = nn.Linear(action_dim, latent_dim)
+        
+    def forward(self, actions):
+        # actions: [B, T, 2]
+        B, T, _ = actions.shape
+        actions_flat = actions.view(B*T, -1)
+        h = self.fc(actions_flat)
+        h = h.view(B, T, -1)
+        return h # [B, T, latent_dim]
+
+
+class TemporalModel(nn.Module):
+    def __init__(self, input_dim, hidden_dim=256):
+        super(TemporalModel, self).__init__()
+        # An LSTM to aggregate sequence information
+        self.lstm = nn.LSTM(input_dim, hidden_dim, batch_first=True)
+        
+    def forward(self, seq):
+        # seq: [B, T, input_dim]
+        _, (h_n, _) = self.lstm(seq)
+        # h_n: [1, B, hidden_dim] -> [B, hidden_dim]
+        return h_n.squeeze(0)
+
+class Predictor(nn.Module):
+    def __init__(self, input_dim, output_dim):
+        super(Predictor, self).__init__()
+        self.fc = nn.Sequential(
+            nn.Linear(input_dim, 256),
+            nn.ReLU(),
+            nn.Linear(256, output_dim)
+        )
+        self.layer_norm = nn.LayerNorm(output_dim)  # Normalization layer
+        
+    def forward(self, x):
+        x = self.fc(x)               # [B, output_dim]
+        x = self.layer_norm(x)       # Normalize encodings
         return x
-
-
-class PredictorNetwork(nn.Module):
-    def __init__(self, hidden_dim, action_dim):
-        super(PredictorNetwork, self).__init__()
-        self.fc1 = nn.Linear(hidden_dim + action_dim, hidden_dim)
-        self.bn1 = nn.BatchNorm1d(hidden_dim)
-        self.relu = nn.ReLU()
-        # Projection Head
-        self.fc2 = nn.Linear(hidden_dim, hidden_dim)
-
-    def forward(self, state, action):
-        x = torch.cat([state, action], dim=-1)
-        x = self.relu(self.bn1(self.fc1(x)))
-        x = self.relu(self.fc2(x))
-        return x
+    
 
 class JEPA(nn.Module):
-
-    def __init__(self, input_channels, hidden_dim, action_dim):
+    def __init__(self, state_latent_dim=128, action_latent_dim=32, hidden_dim=256, train=False):
         super(JEPA, self).__init__()
-        self.encoder = EncoderNetwork(input_channels, hidden_dim)
-        self.predictor = PredictorNetwork(hidden_dim, action_dim)
-      
-        self.repr_dim = hidden_dim
+        self.state_encoder = StateEncoder(latent_dim=state_latent_dim)
+        self.action_encoder = ActionEncoder(latent_dim=action_latent_dim)
+        
+        # Input to temporal model is state_embedding + action_embedding
+        self.temporal_input_dim = state_latent_dim + action_latent_dim
+        self.temporal_model = TemporalModel(input_dim=self.temporal_input_dim, hidden_dim=hidden_dim)
+        
+        # Predictor maps from hidden_dim (Sx) to state_latent_dim (Sy)
+        self.predictor = Predictor(input_dim=hidden_dim, output_dim=state_latent_dim)
 
-    def forward(self, states, actions, states2=None, return_actual_embeddings=False):
-        embeddings1_pred = self._process_sequence(states, actions)
-        if return_actual_embeddings:
-            embeddings1_actual = self._encode_sequence(states)
-        if states2 is not None:
-            embeddings2_pred = self._process_sequence(states2, actions)
-            if return_actual_embeddings:
-                embeddings2_actual = self._encode_sequence(states2)
-            if return_actual_embeddings:
-                return embeddings1_pred, embeddings2_pred, embeddings1_actual, embeddings2_actual
+
+    def forward(self, states, actions):
+            # states: [B, 17, 2, 65, 65]
+            # actions: [B, 16, 2]
+            
+            B = states.shape[0]
+            
+            # Encode all states
+            states_reshaped = states.view(B*17, 2, 65, 65)
+            state_embeds = self.state_encoder(states_reshaped) # [B*17, state_latent_dim]
+            state_embeds = state_embeds.view(B, 17, -1) # [B, 17, state_latent_dim]
+            
+            # Take initial states (t=0,...,15) and final state (t=16)
+            state_embeds_init = state_embeds[:, 0:16, :] # [B, 16, state_latent_dim]
+            state_embed_final = state_embeds[:, 16, :]   # Sy
+            
+            # Encode actions
+            action_embeds = self.action_encoder(actions) # [B, 16, action_latent_dim]
+            
+            # Concatenate state and action embeddings for temporal model
+            seq = torch.cat([state_embeds_init, action_embeds], dim=-1) # [B,16, state_latent_dim+action_latent_dim]
+            
+            # Get Sx from temporal model
+            Sx = self.temporal_model(seq) # [B, hidden_dim]
+            
+            # Predict Sy_hat
+            Sy_hat = self.predictor(Sx) # [B, state_latent_dim]
+            
+            if(train):
+                return Sy_hat, state_embed_final
             else:
-                return embeddings1_pred, embeddings2_pred
-        else:
-            if return_actual_embeddings:
-                return embeddings1_pred, embeddings1_actual
-            else:
-                return embeddings1_pred
-
-    def _encode_sequence(self, states):
-        # Encode each state in the sequence
-        embeddings = [self.encoder(state) for state in states.transpose(0, 1)]
-        embeddings = torch.stack(embeddings, dim=1)  # Shape: [batch_size, seq_len, hidden_dim]
-        return embeddings
-
-
-    def _process_sequence(self, states, actions):
-        batch_size, seq_len, channels, height, width = states.size()
-        predicted_states = []
-        print("Seq:",seq_len)
-
-        # Encode the initial observation
-        s_t = self.encoder(states[:, 0])
-        predicted_states.append(s_t.unsqueeze(1))
-
-        # Recurrently predict future latent states
-        for t in range(1, 17):
-            action_t = actions[:, t - 1]
-            s_t = self.predictor(s_t, action_t)
-            predicted_states.append(s_t.unsqueeze(1))
-
-        # Concatenate predicted states across time
-        predicted_states = torch.cat(predicted_states, dim=1)
-        return predicted_states
-
-
-def vicreg_loss(x, y, sim_weight=25.0, var_weight=25.0, cov_weight=1.0):
-    """
-    Compute the VicReg loss between two batches of embeddings x and y.
-
-    Args:
-        x (torch.Tensor): Embeddings from view 1, shape (batch_size, feature_dim)
-        y (torch.Tensor): Embeddings from view 2, shape (batch_size, feature_dim)
-        sim_weight (float): Weight for the invariance (similarity) term
-        var_weight (float): Weight for the variance term
-        cov_weight (float): Weight for the covariance term
-
-    Returns:
-        torch.Tensor: The computed VicReg loss
-    """
-    # Invariance loss (Mean Squared Error)
-    invariance_loss = F.mse_loss(x, y)
-
-    # Variance loss
-    def variance_loss(z):
-        std = torch.sqrt(z.var(dim=0) + 1e-4)
-        return torch.mean(F.relu(1 - std))
-
-    var_loss = variance_loss(x) + variance_loss(y)
-
-    # Covariance loss
-    def covariance_loss(z):
-        batch_size, feature_dim = z.size()
-        z = z - z.mean(dim=0)
-        cov = (z.T @ z) / (batch_size - 1)
-        off_diagonal = cov - torch.diag(torch.diag(cov))
-        return (off_diagonal ** 2).sum() / feature_dim
-
-    cov_loss = covariance_loss(x) + covariance_loss(y)
-
-    # Total VicReg loss
-    loss = sim_weight * invariance_loss + var_weight * var_loss + cov_weight * cov_loss
-    return loss
-
-
-def train_model(model, dataloader, optimizer, num_epochs=10, device='cuda'):
-    """
-    Trains the JEPA model using VicReg.
-    """
-    model = model.to(device)
-
-    for epoch in range(num_epochs):
-        model.train()
-        total_loss = 0.0  # Accumulates the loss over the epoch
-
-        with tqdm(total=len(dataloader), desc=f"Epoch [{epoch+1}/{num_epochs}]", unit='batch') as pbar:
-            for states1, states2, actions in dataloader:
-                states1 = states1.to(device)
-                states2 = states2.to(device)
-                actions = actions.to(device)
-
-                optimizer.zero_grad()
-
-                # Forward pass with both augmented views
-                embeddings1_pred, embeddings2_pred, embeddings1_actual, embeddings2_actual = model(
-                    states1, actions, states2=states2, return_actual_embeddings=True
-                )
-
-                # Flatten embeddings
-                batch_size, seq_len, hidden_dim = embeddings1_pred.size()
-                embeddings1_pred_flat = embeddings1_pred.view(batch_size * seq_len, hidden_dim)
-                embeddings2_pred_flat = embeddings2_pred.view(batch_size * seq_len, hidden_dim)
-                embeddings1_actual_flat = embeddings1_actual.view(batch_size * seq_len, hidden_dim)
-                embeddings2_actual_flat = embeddings2_actual.view(batch_size * seq_len, hidden_dim)
-
-                # Compute VicReg loss between predicted embeddings
-                vicreg_loss_value = vicreg_loss(embeddings1_pred_flat, embeddings2_pred_flat)
-
-                # Compute prediction loss between predicted and actual embeddings
-                loss_pred1 = F.mse_loss(embeddings1_pred_flat, embeddings1_actual_flat)
-                loss_pred2 = F.mse_loss(embeddings2_pred_flat, embeddings2_actual_flat)
-                prediction_loss = (loss_pred1 + loss_pred2) / 2
-
-                # Total loss
-                alpha = 1.0  # Hyperparameter to balance losses
-                batch_loss = vicreg_loss_value + alpha * prediction_loss
-
-                # Backward pass and optimization
-                batch_loss.backward()
-
-                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-
-                optimizer.step()
-                
-                # Accumulate total loss
-                total_loss += batch_loss.item()
-                
-                # Update tqdm progress bar
-                pbar.set_postfix({'Loss': f'{batch_loss.item():.6f}'})
-                pbar.update(1)
-
-            avg_loss = total_loss / len(dataloader)
-            print(f"Epoch [{epoch+1}/{num_epochs}] Average Loss: {avg_loss:.6f}")
+                return Sy_hat
