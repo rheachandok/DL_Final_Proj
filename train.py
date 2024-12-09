@@ -28,7 +28,7 @@ train_loader = create_wall_dataloader(
 
 # Initialize Normalizer
 normalizer = Normalizer(device=device)
-#normalizer.compute_embedding_stats(model, train_loader, device)
+normalizer.compute_embedding_stats(model, train_loader, device)
 print("Embedding Mean:", normalizer.mean)
 print("Embedding Std:", normalizer.std)
 
@@ -62,22 +62,36 @@ for epoch in range(num_epochs):
         states = batch.states.to(device)    # [B,17,2,65,65]
         actions = batch.actions.to(device)  # [B,16,2]
 
-        # Encode target Sy externally
-        target_states = states[:, 16, :, :, :]  # [B, 2, 65, 65]
-        with torch.no_grad():
-            Sy = model.state_encoder(target_states)  # [B, state_latent_dim]
-        
-        # Normalize target Sy embeddings
-        #Sy = normalizer.normalize_embeddings(Sy)
+        # Extract target states for comparison (all states except the first one)
+        target_states = states[:, 1:, :, :, :]  # [B, 16, 2, 65, 65] (all states except the first one)
 
-        # Forward pass through JEPA model to get Sy_hat
-        Sy_hat = model(states, actions)             # [B, state_latent_dim]
-        
-        # Normalize predicted Sy_hat embeddings
-        #Sy_hat = normalizer.normalize_embeddings(Sy_hat)
+        # Forward pass through JEPA model to get predicted state embeddings
+        predicted_states = model(states, actions)  # [B, 16, state_latent_dim]
 
-        # Compute VICReg-like total loss
-        total_loss, inv_loss, var_loss, cov_loss = vicreg_loss(Sy_hat, Sy)
+        # Encode target states into latent space
+        target_latent_states = model.state_encoder(target_states.view(-1, *target_states.shape[2:]))  # [B*16, state_latent_dim]
+        target_latent_states = target_latent_states.view(states.shape[0], target_states.shape[1], -1)  # [B, 16, state_latent_dim]
+
+        # Normalize predicted stat
+        # Encode target states into latent space
+        target_latent_states = model.state_encoder(target_states.view(-1, *target_states.shape[2:]))  # [B*16, state_latent_dim]
+        target_latent_states = target_latent_states.view(states.shape[0], target_states.shape[1], -1)  # [B, 16, state_latent_dim]
+
+        # Normalize predicted states and target states if needed (optional)
+        # predicted_states = normalizer.normalize_embeddings(predicted_states)
+        # target_latent_states = normalizer.normalize_embeddings(target_latent_states)
+
+        # Compute the loss for each predicted state vs corresponding target state in latent space
+        total_loss = 0.0
+        inv_loss = 0.0
+        var_loss = 0.0
+        cov_loss = 0.0
+        for t in range(target_latent_states.shape[1]):
+            total, inv, var, cov = vicreg_loss(predicted_states[:, t], target_latent_states[:, t])
+            total_loss += total
+            inv_loss += inv
+            var_loss += var
+            cov_loss += cov
 
         # Backpropagation for JEPA model
         optimizer_model.zero_grad()
@@ -102,25 +116,25 @@ for epoch in range(num_epochs):
             'Covariance Loss': f"{cov_loss.item():.4f}"
         })
 
-    # Step the scheduler
-    scheduler_model.step()
+        # Step the scheduler
+        scheduler_model.step()
 
-    # Calculate average losses for the epoch
-    avg_vicreg_loss = epoch_vicreg_loss / len(train_loader)
-    avg_inv_loss = epoch_inv_loss / len(train_loader)
-    avg_var_loss = epoch_var_loss / len(train_loader)
-    avg_cov_loss = epoch_cov_loss / len(train_loader)
+        # Calculate average losses for the epoch
+        avg_vicreg_loss = epoch_vicreg_loss / len(train_loader)
+        avg_inv_loss = epoch_inv_loss / len(train_loader)
+        avg_var_loss = epoch_var_loss / len(train_loader)
+        avg_cov_loss = epoch_cov_loss / len(train_loader)
 
-    print(f"Epoch {epoch+1} - VICReg Loss: {avg_vicreg_loss:.4f}, "
-          f"Invariance: {avg_inv_loss:.4f}, Variance: {avg_var_loss:.4f}, "
-          f"Covariance: {avg_cov_loss:.4f}")
+        print(f"Epoch {epoch+1} - VICReg Loss: {avg_vicreg_loss:.4f}, "
+            f"Invariance: {avg_inv_loss:.4f}, Variance: {avg_var_loss:.4f}, "
+            f"Covariance: {avg_cov_loss:.4f}")
 
-    # Save the model if the training loss improves
-    if avg_vicreg_loss < best_train_loss:
-        best_train_loss = avg_vicreg_loss
-        torch.save(model.state_dict(), checkpoint_path)  # Save only the model state_dict
+        # Save the model if the training loss improves
+        if avg_vicreg_loss < best_train_loss:
+            best_train_loss = avg_vicreg_loss
+            torch.save(model.state_dict(), checkpoint_path)  # Save only the model state_dict
 
-        print(f"Model checkpoint saved at epoch {epoch+1}")
+            print(f"Model checkpoint saved at epoch {epoch+1}")
 
-# Optionally, after training, you can save the final model as well
-torch.save(model.state_dict(), "final_model.pth")
+    # Optionally, after training, you can save the final model as well
+    torch.save(model.state_dict(), "final_model.pth")

@@ -59,6 +59,7 @@ class Predictor(nn.Module):
         self.fc = nn.Sequential(
             nn.Linear(input_dim, 256),
             nn.ReLU(),
+            nn.dropout(p=0.2),
             nn.Linear(256, output_dim)
         )
         self.layer_norm = nn.LayerNorm(output_dim)  # Normalization layer
