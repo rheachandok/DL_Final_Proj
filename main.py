@@ -49,7 +49,7 @@ def load_model():
     hidden_dim = 256
 
     model = JEPA(state_latent_dim=state_latent_dim, action_latent_dim=action_latent_dim, hidden_dim=hidden_dim)
-    model.load_state_dict(torch.load('path/to/your/model.pth'))
+    model = torch.load('/scratch/rc5397/DL_Final_Proj/model.pth')
     return model
 
 

@@ -17,8 +17,6 @@ hidden_dim = 256
 
 model = JEPA(state_latent_dim=state_latent_dim, action_latent_dim=action_latent_dim, hidden_dim=hidden_dim).to(device)
 
-
-
 # Create actual DataLoaders without normalization (handled in training loop)
 train_loader = create_wall_dataloader(
     data_path="/scratch/DL24FA/train",
@@ -30,12 +28,9 @@ train_loader = create_wall_dataloader(
 
 # Initialize Normalizer
 normalizer = Normalizer(device=device)
-normalizer.compute_embedding_stats(model, train_loader, device)
+#normalizer.compute_embedding_stats(model, train_loader, device)
 print("Embedding Mean:", normalizer.mean)
 print("Embedding Std:", normalizer.std)
-
-# Since you mentioned not needing evaluation code, val_loader is omitted
-# If needed, create similarly with probing=False
 
 # Define Optimizers and Scheduler
 optimizer_model = torch.optim.Adam(model.parameters(), lr=1e-3)
@@ -43,14 +38,14 @@ scheduler_model = torch.optim.lr_scheduler.StepLR(optimizer_model, step_size=5, 
 
 # Define loss functions
 vicreg_loss = VICRegLoss(
-    lambda_invariance=25.0,    # Hyperparameters to be tuned
-    lambda_variance=25.0,
-    lambda_covariance=1.0
+    lambda_invariance=1.0,    # Hyperparameters to be tuned
+    lambda_variance=10.0,
+    lambda_covariance=0.1
 )
 
 # Training loop
 num_epochs = 10
-best_train_loss = float('inf')  # Changed to track best training loss
+best_train_loss = float('inf')  # Track the best training loss
 checkpoint_path = 'best_model.pth'
 
 for epoch in range(num_epochs):
@@ -71,11 +66,15 @@ for epoch in range(num_epochs):
         target_states = states[:, 16, :, :, :]  # [B, 2, 65, 65]
         with torch.no_grad():
             Sy = model.state_encoder(target_states)  # [B, state_latent_dim]
-        #Sy = normalizer.normalize_embeddings(Sy)      # Normalize targets
+        
+        # Normalize target Sy embeddings
+        #Sy = normalizer.normalize_embeddings(Sy)
 
         # Forward pass through JEPA model to get Sy_hat
         Sy_hat = model(states, actions)             # [B, state_latent_dim]
-        #Sy_hat = normalizer.normalize_embeddings(Sy_hat)  # Normalize predictions
+        
+        # Normalize predicted Sy_hat embeddings
+        #Sy_hat = normalizer.normalize_embeddings(Sy_hat)
 
         # Compute VICReg-like total loss
         total_loss, inv_loss, var_loss, cov_loss = vicreg_loss(Sy_hat, Sy)
@@ -84,8 +83,8 @@ for epoch in range(num_epochs):
         optimizer_model.zero_grad()
         total_loss.backward()
 
-        # Gradient Clipping
-        #torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        # Gradient Clipping (optional, can be enabled for stability)
+        # torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
 
         optimizer_model.step()
 
@@ -116,6 +115,12 @@ for epoch in range(num_epochs):
           f"Invariance: {avg_inv_loss:.4f}, Variance: {avg_var_loss:.4f}, "
           f"Covariance: {avg_cov_loss:.4f}")
 
-    # Checkpointing as previously defined...
- 
-    torch.save(model, "model.pth")
+    # Save the model if the training loss improves
+    if avg_vicreg_loss < best_train_loss:
+        best_train_loss = avg_vicreg_loss
+        torch.save(model.state_dict(), checkpoint_path)  # Save only the model state_dict
+
+        print(f"Model checkpoint saved at epoch {epoch+1}")
+
+# Optionally, after training, you can save the final model as well
+torch.save(model.state_dict(), "final_model.pth")

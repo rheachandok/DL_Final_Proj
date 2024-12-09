@@ -75,39 +75,41 @@ class JEPA(nn.Module):
         self.state_encoder = StateEncoder(latent_dim=state_latent_dim)
         self.action_encoder = ActionEncoder(latent_dim=action_latent_dim)
         
-        # Input to temporal model is state_embedding + action_embedding
+        # Temporal model input: state_embedding + action_embedding
         self.temporal_input_dim = state_latent_dim + action_latent_dim
         self.temporal_model = TemporalModel(input_dim=self.temporal_input_dim, hidden_dim=hidden_dim)
         
         # Predictor maps from hidden_dim (Sx) to state_latent_dim (Sy)
         self.predictor = Predictor(input_dim=hidden_dim, output_dim=state_latent_dim)
 
+    def forward(self, states, actions, trajectory_length=17):
+        B = states.shape[0]
 
-    def forward(self, states, actions):
-            # states: [B, 17, 2, 65, 65]
-            # actions: [B, 16, 2]
+        # List to store the predicted states
+        predicted_states = []
+
+        # Encode the initial state (t=0)
+        initial_state = states[:, 0, :, :, :]  # Shape [B, 2, 65, 65]
+        state_embed_initial = self.state_encoder(initial_state)  # [B, state_latent_dim]
+        
+        # Encode actions (for the first time step)
+        action_embed = self.action_encoder(actions)  # Shape [B, 16, action_latent_dim]
+
+        # Iterate through the trajectory to predict the next state
+        state_embed = state_embed_initial  # Initialize with the first state embedding
+
+        for t in range(trajectory_length - 1):  # Predict next states iteratively
+            # Concatenate the current state embedding with action embeddings for the current time step
+            seq_input = torch.cat([state_embed.unsqueeze(1), action_embed[:, t, :].unsqueeze(1)], dim=-1)  # [B, 1, state_latent_dim + action_latent_dim]
+
+            # Get the hidden representation (Sx) from the temporal model
+            Sx = self.temporal_model(seq_input)  # Shape [B, hidden_dim]
             
-            B = states.shape[0]
-            
-            # Encode all states
-            states_reshaped = states.view(B*17, 2, 65, 65)
-            state_embeds = self.state_encoder(states_reshaped) # [B*17, state_latent_dim]
-            state_embeds = state_embeds.view(B, 17, -1) # [B, 17, state_latent_dim]
-            
-            # Take initial states (t=0,...,15) and final state (t=16)
-            state_embeds_init = state_embeds[:, 0:16, :] # [B, 16, state_latent_dim]
-            state_embed_final = state_embeds[:, 16, :]   # Sy
-            
-            # Encode actions
-            action_embeds = self.action_encoder(actions) # [B, 16, action_latent_dim]
-            
-            # Concatenate state and action embeddings for temporal model
-            seq = torch.cat([state_embeds_init, action_embeds], dim=-1) # [B,16, state_latent_dim+action_latent_dim]
-            
-            # Get Sx from temporal model
-            Sx = self.temporal_model(seq) # [B, hidden_dim]
-            
-            # Predict Sy_hat
-            Sy_hat = self.predictor(Sx) # [B, state_latent_dim]
-            
-            return Sy_hat
+            # Predict the next state (Sy_hat)
+            Sy_hat = self.predictor(Sx)  # [B, state_latent_dim]
+            predicted_states.append(Sy_hat)
+
+            # Update state_embed for the next iteration (prediction for t+1)
+            state_embed = Sy_hat
+
+        return torch.stack(predicted_states, dim=1)  # [B, T-1, state_latent_dim], sequence of predicted states
