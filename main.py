@@ -3,7 +3,7 @@ from evaluator import ProbingEvaluator
 import torch
 from models import MockModel
 import glob
-
+from impl import JEPA
 
 def get_device():
     """Check for GPU availability."""
@@ -44,7 +44,12 @@ def load_data(device):
 def load_model():
     """Load or initialize the model."""
     # TODO: Replace MockModel with your trained model
-    model = MockModel()
+    state_latent_dim = 128
+    action_latent_dim = 32
+    hidden_dim = 256
+
+    model = JEPA(state_latent_dim=state_latent_dim, action_latent_dim=action_latent_dim, hidden_dim=hidden_dim)
+    model.load_state_dict(torch.load('path/to/your/model.pth'))
     return model
 
 

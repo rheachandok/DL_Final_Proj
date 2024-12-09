@@ -45,7 +45,9 @@ train_loader = create_wall_dataloader(
     train=True,
 )
 
-compute_embedding_stats(model, train_loader_temp, normalizer, device)
+normalizer.compute_embedding_stats(model, train_loader, device)
+print("Embedding Mean:", normalizer.mean)
+print("Embedding Std:", normalizer.std)
 
 # Since you mentioned not needing evaluation code, val_loader is omitted
 # If needed, create similarly with probing=False
@@ -73,7 +75,10 @@ for epoch in range(num_epochs):
     epoch_var_loss = 0.0
     epoch_cov_loss = 0.0
 
-    for batch in tqdm(train_loader, desc=f"Training Epoch {epoch+1}"):
+    # Initialize tqdm progress bar for the current epoch
+    progress_bar = tqdm(train_loader, desc=f"Training Epoch {epoch+1}", leave=False)
+
+    for batch in progress_bar:
         states = batch.states.to(device)    # [B,17,2,65,65]
         actions = batch.actions.to(device)  # [B,16,2]
 
@@ -81,10 +86,11 @@ for epoch in range(num_epochs):
         target_states = states[:, 16, :, :, :]  # [B, 2, 65, 65]
         with torch.no_grad():
             Sy = model.state_encoder(target_states)  # [B, state_latent_dim]
-        Sy = normalizer.normalize_embedding(Sy)      # Correct normalization
+        Sy = normalizer.normalize_embeddings(Sy)      # Normalize targets
 
         # Forward pass through JEPA model to get Sy_hat
-        Sy_hat = model(states, actions)  # [B, state_latent_dim]
+        Sy_hat = model(states, actions)             # [B, state_latent_dim]
+        Sy_hat = normalizer.normalize_embeddings(Sy_hat)  # Normalize predictions
 
         # Compute VICReg-like total loss
         total_loss, inv_loss, var_loss, cov_loss = vicreg_loss(Sy_hat, Sy)
@@ -104,9 +110,18 @@ for epoch in range(num_epochs):
         epoch_var_loss += var_loss.item()
         epoch_cov_loss += cov_loss.item()
 
+        # Update tqdm progress bar with current batch loss
+        progress_bar.set_postfix({
+            'Total Loss': f"{total_loss.item():.4f}",
+            'Invariance Loss': f"{inv_loss.item():.4f}",
+            'Variance Loss': f"{var_loss.item():.4f}",
+            'Covariance Loss': f"{cov_loss.item():.4f}"
+        })
+
     # Step the scheduler
     scheduler_model.step()
 
+    # Calculate average losses for the epoch
     avg_vicreg_loss = epoch_vicreg_loss / len(train_loader)
     avg_inv_loss = epoch_inv_loss / len(train_loader)
     avg_var_loss = epoch_var_loss / len(train_loader)
@@ -116,16 +131,6 @@ for epoch in range(num_epochs):
           f"Invariance: {avg_inv_loss:.4f}, Variance: {avg_var_loss:.4f}, "
           f"Covariance: {avg_cov_loss:.4f}")
 
-    # Optional: Save the best model based on training loss
-    if avg_vicreg_loss < best_train_loss:
-        best_train_loss = avg_vicreg_loss
-        torch.save({
-            'epoch': epoch + 1,
-            'model_state_dict': model.state_dict(),
-            'optimizer_state_dict': optimizer_model.state_dict(),
-            'scheduler_state_dict': scheduler_model.state_dict(),
-            'vicreg_loss': best_train_loss,
-        }, checkpoint_path)
-        print(f"Saved Best Model at Epoch {epoch+1}")
-
-    torch.save(model, 'model.pth')
+    # Checkpointing as previously defined...
+ 
+    torch.save(model, "model.pth")

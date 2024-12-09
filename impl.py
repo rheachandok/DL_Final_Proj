@@ -110,7 +110,4 @@ class JEPA(nn.Module):
             # Predict Sy_hat
             Sy_hat = self.predictor(Sx) # [B, state_latent_dim]
             
-            if(train):
-                return Sy_hat, state_embed_final
-            else:
-                return Sy_hat
+            return Sy_hat

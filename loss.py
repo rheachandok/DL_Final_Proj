@@ -1,18 +1,16 @@
 import torch.nn.functional as F
 import torch.nn as nn
+import torch
 
 def invariance_loss(Sy_hat, Sy):
-    # Sy_hat and Sy are [B, D]
     return F.mse_loss(Sy_hat, Sy)
 
 def variance_loss(embeddings, eps=1e-4, threshold=1.0):
-    # embeddings: [B, D]
     std = embeddings.std(dim=0)
     variance = torch.mean(F.relu(threshold - std))
     return variance
 
 def covariance_loss(embeddings):
-    # embeddings: [B, D]
     B, D = embeddings.size()
     embeddings = embeddings - embeddings.mean(dim=0)
     cov = (embeddings.T @ embeddings) / (B - 1)
@@ -36,4 +34,4 @@ class VICRegLoss(nn.Module):
             self.lambda_variance * var_loss +
             self.lambda_covariance * cov_loss
         )
-        return total_loss
+        return total_loss, inv_loss, var_loss, cov_loss

@@ -1,6 +1,7 @@
 import torch
 import torch.nn.functional as F
 import torch.nn as nn
+from tqdm import tqdm
 
 class Normalizer:
     def __init__(self, mean=None, std=None, device='cuda'):
@@ -8,7 +9,7 @@ class Normalizer:
         self.std = std
         self.device = device
 
-    def compute_stats(self, data_loader):
+    def compute_embedding_stats(self, model, data_loader, device):
         """
         Computes mean and std from the training data.
         """
@@ -25,7 +26,7 @@ class Normalizer:
         self.mean = all_embeddings.mean(dim=0)
         self.std = all_embeddings.std(dim=0) + 1e-8  # Avoid division by zero
 
-    def normalize(self, embeddings):
+    def normalize_embeddings(self, embeddings):
         """
         Normalizes embeddings using the computed mean and std.
         """
