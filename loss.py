@@ -18,8 +18,9 @@ def covariance_loss(embeddings):
     loss = torch.sum(cov ** 2) / D
     return loss
 
+
 class VICRegLoss(nn.Module):
-    def __init__(self, lambda_invariance=25.0, lambda_variance=25.0, lambda_covariance=1.0):
+    def __init__(self, lambda_invariance=1.0, lambda_variance=10.0, lambda_covariance=0.1):
         super(VICRegLoss, self).__init__()
         self.lambda_invariance = lambda_invariance
         self.lambda_variance = lambda_variance

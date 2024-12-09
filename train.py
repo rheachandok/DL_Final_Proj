@@ -17,23 +17,6 @@ hidden_dim = 256
 
 model = JEPA(state_latent_dim=state_latent_dim, action_latent_dim=action_latent_dim, hidden_dim=hidden_dim).to(device)
 
-# Initialize Normalizer
-normalizer = Normalizer()
-
-# Function to compute normalization statistics for embeddings
-def compute_embedding_stats(model, data_loader, normalizer, device):
-    model.eval()
-    with torch.no_grad():
-        all_embeddings = []
-        for batch in tqdm(data_loader, desc="Computing Embedding Stats"):
-            states = batch.states.to(device)    # [B,17,2,65,65]
-            actions = batch.actions.to(device)  # [B,16,2]
-            target_states = states[:, 16, :, :, :]  # [B, 2, 65, 65]
-            Sy = model.state_encoder(target_states)  # [B, state_latent_dim]
-            all_embeddings.append(Sy)
-        all_embeddings = torch.cat(all_embeddings, dim=0)
-        normalizer.embedding_mean = all_embeddings.mean(dim=0)
-        normalizer.embedding_std = all_embeddings.std(dim=0) + 1e-6  # Avoid division by zero
 
 
 # Create actual DataLoaders without normalization (handled in training loop)
@@ -45,6 +28,8 @@ train_loader = create_wall_dataloader(
     train=True,
 )
 
+# Initialize Normalizer
+normalizer = Normalizer(device=device)
 normalizer.compute_embedding_stats(model, train_loader, device)
 print("Embedding Mean:", normalizer.mean)
 print("Embedding Std:", normalizer.std)
@@ -86,11 +71,11 @@ for epoch in range(num_epochs):
         target_states = states[:, 16, :, :, :]  # [B, 2, 65, 65]
         with torch.no_grad():
             Sy = model.state_encoder(target_states)  # [B, state_latent_dim]
-        Sy = normalizer.normalize_embeddings(Sy)      # Normalize targets
+        #Sy = normalizer.normalize_embeddings(Sy)      # Normalize targets
 
         # Forward pass through JEPA model to get Sy_hat
         Sy_hat = model(states, actions)             # [B, state_latent_dim]
-        Sy_hat = normalizer.normalize_embeddings(Sy_hat)  # Normalize predictions
+        #Sy_hat = normalizer.normalize_embeddings(Sy_hat)  # Normalize predictions
 
         # Compute VICReg-like total loss
         total_loss, inv_loss, var_loss, cov_loss = vicreg_loss(Sy_hat, Sy)
@@ -100,7 +85,7 @@ for epoch in range(num_epochs):
         total_loss.backward()
 
         # Gradient Clipping
-        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        #torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
 
         optimizer_model.step()
 

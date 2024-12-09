@@ -42,7 +42,7 @@ class ActionEncoder(nn.Module):
 
 
 class TemporalModel(nn.Module):
-    def __init__(self, input_dim, hidden_dim=256):
+    def __init__(self, input_dim, hidden_dim=512):
         super(TemporalModel, self).__init__()
         # An LSTM to aggregate sequence information
         self.lstm = nn.LSTM(input_dim, hidden_dim, batch_first=True)
