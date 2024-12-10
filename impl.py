@@ -90,7 +90,7 @@ def forward(self, states, actions):
     predicted_states = []
 
     # Encode the initial state
-    s_t = self.encoder(states[:, 0])  # [batch_size, channels, height, width]
+    s_t = self.encoder(states[:, 0].squeeze(1))  # Remove extra time dimension
     predicted_states.append(s_t.unsqueeze(1))
 
     # Predict future states
@@ -101,6 +101,7 @@ def forward(self, states, actions):
 
     predicted_states = torch.cat(predicted_states, dim=1)
     return predicted_states
+
 
 # Optimized VICReg Loss Function
 def vicreg_loss(x, y, sim_weight=25.0, var_weight=25.0, cov_weight=1.0):
