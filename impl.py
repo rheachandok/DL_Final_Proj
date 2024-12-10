@@ -93,7 +93,19 @@ def vicreg_loss(x, y, sim_weight=25.0, var_weight=25.0, cov_weight=1.0):
     return sim_weight * invariance_loss + var_weight * var_loss + cov_weight * cov_loss
 
 # Training Function
-def train_model(model, dataloader, optimizer, scheduler, num_epochs, device):
+def train_model(model, dataloader, optimizer, num_epochs, device, scheduler=None):
+    """
+    Train the JEPA model with VICReg loss.
+    Args:
+        model: JEPA model
+        dataloader: DataLoader for training data
+        optimizer: Optimizer
+        num_epochs: Number of epochs
+        device: 'cuda' or 'cpu'
+        scheduler: (Optional) Learning rate scheduler
+    Returns:
+        loss_history: List of average losses per epoch
+    """
     scaler = GradScaler()  # Mixed precision
     loss_history = []
 
@@ -118,7 +130,9 @@ def train_model(model, dataloader, optimizer, scheduler, num_epochs, device):
                 scaler.step(optimizer)
                 scaler.update()
 
-                scheduler.step()  # Adjust learning rate
+                if scheduler:  # Step scheduler if provided
+                    scheduler.step()
+
                 total_loss += loss.item()
                 pbar.set_postfix({"Loss": f"{loss.item():.4f}"})
                 pbar.update(1)
@@ -128,6 +142,7 @@ def train_model(model, dataloader, optimizer, scheduler, num_epochs, device):
         print(f"Epoch {epoch+1}, Average Loss: {avg_loss:.4f}")
 
     return loss_history
+
 
 # Mock Data Generation
 def get_mock_dataloader(batch_size, seq_len, channels, height, width, hidden_dim, action_dim):
