@@ -89,8 +89,8 @@ def forward(self, states, actions):
     print(f"States Shape: {states.shape}")  # Debug input states shape
     predicted_states = []
 
-    # Encode the initial state
-    s_t = self.encoder(states[:, 0].squeeze(1))  # Remove extra time dimension
+    # Encode the initial state: explicitly reshape to remove extra time dimension
+    s_t = self.encoder(states[:, 0].reshape(batch_size, channels, height, width))
     predicted_states.append(s_t.unsqueeze(1))
 
     # Predict future states
