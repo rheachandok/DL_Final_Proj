@@ -21,9 +21,13 @@ class EncoderNetwork(nn.Module):
             nn.BatchNorm2d(128),
             nn.ReLU()
         )
-        self.fc = nn.Linear(128 * 8 * 8, hidden_dim)
-        self.dropout = nn.Dropout(0.2)
         self._initialize_weights()
+        
+        # Dynamically determine fc layer input size
+        dummy_input = torch.zeros(1, input_channels, 64, 64)  # Adjust this size if input changes
+        conv_output_size = self._get_conv_output_size(dummy_input)
+        self.fc = nn.Linear(conv_output_size, hidden_dim)
+        self.dropout = nn.Dropout(0.2)
 
     def forward(self, x):
         x = self.conv(x)
@@ -38,6 +42,14 @@ class EncoderNetwork(nn.Module):
                 nn.init.kaiming_normal_(m.weight, mode='fan_out')
             elif isinstance(m, nn.Linear):
                 nn.init.xavier_uniform_(m.weight)
+                
+    def _get_conv_output_size(self, x):
+        """
+        Passes a dummy input through the conv layers to compute the flattened size dynamically.
+        """
+        with torch.no_grad():
+            x = self.conv(x)
+            return x.view(1, -1).size(1)
 
 # Optimized Predictor Network
 class PredictorNetwork(nn.Module):
