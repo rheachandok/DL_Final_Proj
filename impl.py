@@ -8,7 +8,7 @@ from torch.cuda.amp import GradScaler, autocast  # Mixed precision training
 
 # Optimized Encoder Network
 class EncoderNetwork(nn.Module):
-    def __init__(self, input_channels, hidden_dim):
+    def __init__(self, input_channels, hidden_dim, input_size=(3, 64, 64)):
         super(EncoderNetwork, self).__init__()
         self.conv = nn.Sequential(
             nn.Conv2d(input_channels, 32, kernel_size=3, stride=2, padding=1),
@@ -23,15 +23,17 @@ class EncoderNetwork(nn.Module):
         )
         self._initialize_weights()
         
-        # Dynamically determine fc layer input size
-        dummy_input = torch.zeros(1, input_channels, 64, 64)  # Adjust this size if input changes
-        conv_output_size = self._get_conv_output_size(dummy_input)
-        self.fc = nn.Linear(conv_output_size, hidden_dim)
+        # Compute flattened size dynamically
+        self._compute_flattened_size(input_channels, input_size)
+        self.fc = nn.Linear(self.flattened_size, hidden_dim)
         self.dropout = nn.Dropout(0.2)
 
     def forward(self, x):
+        print(f"Input shape to Encoder: {x.shape}")  # Debug input shape
         x = self.conv(x)
+        print(f"Shape after Conv layers: {x.shape}")  # Debug conv output shape
         x = x.view(x.size(0), -1)  # Flatten
+        print(f"Shape after Flatten: {x.shape}")  # Debug flattened shape
         x = self.fc(x)
         x = self.dropout(x)
         return x
@@ -42,14 +44,16 @@ class EncoderNetwork(nn.Module):
                 nn.init.kaiming_normal_(m.weight, mode='fan_out')
             elif isinstance(m, nn.Linear):
                 nn.init.xavier_uniform_(m.weight)
-                
-    def _get_conv_output_size(self, x):
+
+    def _compute_flattened_size(self, input_channels, input_size):
         """
-        Passes a dummy input through the conv layers to compute the flattened size dynamically.
+        Passes a dummy input through the conv layers to compute the flattened size.
         """
         with torch.no_grad():
-            x = self.conv(x)
-            return x.view(1, -1).size(1)
+            dummy_input = torch.zeros(1, input_channels, *input_size)
+            conv_output = self.conv(dummy_input)
+            self.flattened_size = conv_output.view(1, -1).size(1)
+            print(f"Computed Flattened Size: {self.flattened_size}")
 
 # Optimized Predictor Network
 class PredictorNetwork(nn.Module):
@@ -75,20 +79,28 @@ class JEPA(nn.Module):
         self.encoder = EncoderNetwork(input_channels, hidden_dim)
         self.predictor = PredictorNetwork(hidden_dim, action_dim)
 
-    def forward(self, states, actions):
-        batch_size, seq_len, channels, height, width = states.size()
-        predicted_states = []
+# JEPA forward method
+def forward(self, states, actions):
+    """
+    Forward method: Encodes the initial state and propagates predictions
+    using the predictor for the given actions.
+    """
+    batch_size, seq_len, channels, height, width = states.size()
+    print(f"States Shape: {states.shape}")  # Debug input states shape
+    predicted_states = []
 
-        s_t = self.encoder(states[:, 0])  # Encode initial state
+    # Encode the initial state
+    s_t = self.encoder(states[:, 0])  # [batch_size, channels, height, width]
+    predicted_states.append(s_t.unsqueeze(1))
+
+    # Predict future states
+    for t in range(1, seq_len):
+        action_t = actions[:, t - 1]
+        s_t = self.predictor(s_t, action_t)
         predicted_states.append(s_t.unsqueeze(1))
 
-        for t in range(1, seq_len):
-            action_t = actions[:, t - 1]
-            s_t = self.predictor(s_t, action_t)
-            predicted_states.append(s_t.unsqueeze(1))
-
-        predicted_states = torch.cat(predicted_states, dim=1)
-        return predicted_states
+    predicted_states = torch.cat(predicted_states, dim=1)
+    return predicted_states
 
 # Optimized VICReg Loss Function
 def vicreg_loss(x, y, sim_weight=25.0, var_weight=25.0, cov_weight=1.0):
