@@ -28,7 +28,7 @@ def slim_covariance_loss(embeddings, reg_weight=0.1):
     return reg_weight * cov_loss / D  # Normalize by embedding dimension
 
 class SLIMCRLoss(nn.Module):
-    def __init__(self, lambda_invariance=1.0, lambda_variance=10.0, lambda_covariance=1.0):
+    def __init__(self, lambda_invariance=1.0, lambda_variance=15.0, lambda_covariance=1.0):
         """
         SLIM-CR Loss: Combines invariance, variance, and covariance regularization.
 

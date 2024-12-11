@@ -34,13 +34,13 @@ scheduler = CosineAnnealingLR(optimizer, T_max=50)
 # Define loss function
 slimcr_loss = SLIMCRLoss(
     lambda_invariance=1.0,   # Balances reconstruction fidelity
-    lambda_variance=10.0,    # Strong regularization against collapse
+    lambda_variance=15.0,    # Strong regularization against collapse
     lambda_covariance=1.0    # Decorrelation of embedding dimensions
 )
 
 
 # Training loop
-num_epochs = 50
+num_epochs = 100
 best_train_loss = float('inf')  # Track the best training loss
 checkpoint_path = 'best_model.pth'
 
