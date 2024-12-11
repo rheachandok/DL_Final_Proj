@@ -115,6 +115,8 @@ class ProbingEvaluator:
 
                 pred_encs = pred_encs.detach()
 
+                losses_list = []
+                
                 n_steps = pred_encs.shape[1]
                 bs = pred_encs.shape[0]
 
