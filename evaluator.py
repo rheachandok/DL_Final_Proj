@@ -110,38 +110,39 @@ class ProbingEvaluator:
 
         for epoch in tqdm(range(epochs), desc=f"Probe prediction epochs"):
             for batch in tqdm(dataset, desc="Probe prediction step"):
-                ################################################################################
-                # Updated Forward Pass
-                ################################################################################
                 init_states = batch.states[:, 0, :, :, :]  # Extract initial state [B, C, H, W]
                 pred_encs = model(init_states, batch.actions)  # Use JEPA forward pass
-                ################################################################################
 
                 pred_encs = pred_encs.detach()
 
                 n_steps = pred_encs.shape[1]
                 bs = pred_encs.shape[0]
 
-                losses_list = []
-
                 target = getattr(batch, "locations").to(self.device)
                 target = self.normalizer.normalize_location(target)
 
-                if (
-                    config.sample_timesteps is not None
-                    and config.sample_timesteps < n_steps
-                ):
+                # Debug shapes
+                print(f"Initial pred_encs shape: {pred_encs.shape}, target shape: {target.shape}")
+
+                if config.sample_timesteps is not None and config.sample_timesteps < n_steps:
                     indices = torch.randperm(n_steps)[: config.sample_timesteps]
                     pred_encs = pred_encs[:, indices, :]
                     target = target[:, indices, :]
 
                 pred_locs = torch.stack([prober(x) for x in pred_encs], dim=1)
+
+                # Debug shapes again
+                print(f"After sampling: pred_locs shape: {pred_locs.shape}, target shape: {target.shape}")
+
+                assert pred_locs.shape == target.shape, (
+                    f"Shape mismatch: pred_locs={pred_locs.shape}, target={target.shape}"
+                )
+
                 losses = location_losses(pred_locs, target)
                 per_probe_loss = losses.mean()
 
                 if step % 100 == 0:
                     print(f"Normalized pred locations loss: {per_probe_loss.item()}")
-
                 losses_list.append(per_probe_loss)
                 optimizer_pred_prober.zero_grad()
                 loss = sum(losses_list)
