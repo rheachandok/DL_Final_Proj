@@ -2,108 +2,168 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+import torch
+import torch.nn as nn
+
+import torch
+import torch.nn as nn
+
 class StateEncoder(nn.Module):
-    def __init__(self, latent_dim=256):
+    def __init__(self, embedding_dim=256):
+        """
+        Encodes state images into a latent embedding space.
+
+        Args:
+            embedding_dim (int): Dimension of the output embedding.
+        """
         super(StateEncoder, self).__init__()
-        # Updated CNN with BatchNorm and increased depth
-        self.conv = nn.Sequential(
-            nn.Conv2d(2, 32, kernel_size=3, stride=1, padding=1),
+        self.conv_layers = nn.Sequential(
+            nn.Conv2d(2, 32, kernel_size=3, stride=1, padding=1),  # Input channels: 2
             nn.BatchNorm2d(32),
             nn.ReLU(),
-            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),
+            nn.MaxPool2d(kernel_size=2, stride=2),  # Output: (32, 32, 32)
+
+            nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1),
             nn.BatchNorm2d(64),
             nn.ReLU(),
-            nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),
+            nn.MaxPool2d(kernel_size=2, stride=2),  # Output: (64, 16, 16)
+
+            nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1),
             nn.BatchNorm2d(128),
             nn.ReLU(),
-            nn.Conv2d(128, 128, kernel_size=3, stride=2, padding=1),
-            nn.BatchNorm2d(128),
-            nn.ReLU(),
-        )
-        self.fc = nn.Sequential(
-            nn.Linear(128 * 9 * 9, 512),
-            nn.ReLU(),
-            nn.Dropout(0.3),  # Add dropout for regularization
-            nn.Linear(512, latent_dim),
+            nn.MaxPool2d(kernel_size=2, stride=2),  # Output: (128, 8, 8)
         )
 
+        # Adaptive Pooling to retain spatial detail (e.g., 4x4)
+        self.global_pool = nn.AdaptiveAvgPool2d((4, 4))  # Output: (128, 4, 4)
+
+        # Fully connected layer to project to embedding space
+        self.fc = nn.Linear(128 * 4 * 4, embedding_dim)
+
     def forward(self, x):
-        h = self.conv(x)
-        h = h.view(h.size(0), -1)
-        h = self.fc(h)
-        return h
+        """
+        Forward pass for the StateEncoder.
+
+        Args:
+            x (torch.Tensor): Input tensor of shape [B, 2, 65, 65].
+
+        Returns:
+            torch.Tensor: Embedding tensor of shape [B, embedding_dim].
+        """
+        x = self.conv_layers(x)
+        x = self.global_pool(x)
+        x = x.view(x.size(0), -1)  # Flatten to [B, 128*4*4]
+        x = self.fc(x)
+        return x  # [B, embedding_dim]
 
 
 class ActionEncoder(nn.Module):
-    def __init__(self, action_dim=2, latent_dim=32):
+    def __init__(self, embedding_dim=256):
+        """
+        Encodes action vectors into a latent embedding space.
+
+        Args:
+            embedding_dim (int): Dimension of the output embedding. Default is 256.
+        """
         super(ActionEncoder, self).__init__()
         self.fc = nn.Sequential(
-            nn.Linear(action_dim, 64),
+            nn.Linear(2, 128),  # Input: (delta_x, delta_y)
             nn.ReLU(),
-            nn.Linear(64, latent_dim),
+            nn.Linear(128, embedding_dim)  # Project to 256-dimensional space
         )
 
-    def forward(self, actions):
-        B, T, _ = actions.shape
-        actions_flat = actions.view(B * T, -1)
-        h = self.fc(actions_flat)
-        h = h.view(B, T, -1)
-        return h
+    def forward(self, x):
+        """
+        Forward pass for the ActionEncoder.
+
+        Args:
+            x (torch.Tensor): Input tensor of shape [B, T-1, 2].
+
+        Returns:
+            torch.Tensor: Embedding tensor of shape [B, T-1, embedding_dim].
+        """
+        B, T, A = x.size()
+        x = x.view(-1, A)  # [B*(T-1), 2]
+        x = self.fc(x)      # [B*(T-1), 256]
+        x = x.view(B, T, -1)  # [B, T-1, 256]
+        return x  # [B, T-1, 256]
 
 
-class TemporalModel(nn.Module):
-    def __init__(self, input_dim, hidden_dim=512, num_layers=2):
-        super(TemporalModel, self).__init__()
-        # Replace LSTM with GRU for simplicity and efficiency
-        self.gru = nn.GRU(input_dim, hidden_dim, num_layers=num_layers, batch_first=True, dropout=0.2)
 
-    def forward(self, seq):
-        _, h_n = self.gru(seq)
-        return h_n[-1]  # Use the last hidden state
-
+import torch.nn as nn
 
 class Predictor(nn.Module):
-    def __init__(self, input_dim, output_dim):
+    def __init__(self, input_dim=512, hidden_dim=256, output_dim=256, dropout=0.2):
         super(Predictor, self).__init__()
-        self.fc1 = nn.Linear(input_dim, 256)
-        self.fc2 = nn.Linear(256, output_dim)
-        self.layer_norm = nn.LayerNorm(output_dim)
+        self.fc = nn.Sequential(
+            nn.Linear(input_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(dropout),       # Dropout layer
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(dropout),       # Dropout layer
+            nn.Linear(hidden_dim, output_dim)
+        )
 
-    def forward(self, x):
-        h = F.relu(self.fc1(x))
-        h = F.dropout(h, p=0.3, training=self.training)  # Dropout regularization
-        h = self.fc2(h)
-        return self.layer_norm(h)
+    def forward(self, state, action):
+        x = torch.cat((state, action), dim=1)  # [B*(T-1), 512]
+        x = self.fc(x)                         # [B*(T-1), 256]
+        return x  # [B*(T-1), 256]
 
 
 class JEPA(nn.Module):
-    def __init__(self, state_latent_dim=256, action_latent_dim=32, hidden_dim=256):
+    def __init__(self, state_latent_dim=256, action_latent_dim=256, hidden_dim=128):
+        """
+        Joint Embedding Predictive Architecture (JEPA) model.
+
+        Args:
+            state_latent_dim (int): Dimension of the state embeddings. Default is 256.
+            action_latent_dim (int): Dimension of the action embeddings. Default is 256.
+            hidden_dim (int): Dimension of the Predictor's hidden layer. Default is 128.
+        """
         super(JEPA, self).__init__()
-        self.state_encoder = StateEncoder(latent_dim=state_latent_dim)
-        self.action_encoder = ActionEncoder(latent_dim=action_latent_dim)
-        self.temporal_model = TemporalModel(input_dim=state_latent_dim + action_latent_dim, hidden_dim=hidden_dim)
-        self.predictor = Predictor(input_dim=hidden_dim, output_dim=state_latent_dim)
-        self.repr_dim = hidden_dim
+        self.state_encoder = StateEncoder(embedding_dim=state_latent_dim)
+        self.action_encoder = ActionEncoder(embedding_dim=action_latent_dim)
 
-    def forward(self, states, actions, trajectory_length=17, teacher_forcing_ratio=0.5):
-        B = states.shape[0]
-        predicted_states = []
-        state_embed = self.state_encoder(states[:, 0])  # Initial state encoding
+        # Predictor maps from concatenated state and action embeddings to next state embedding
+        self.predictor = Predictor(
+            input_dim=state_latent_dim + action_latent_dim,
+            hidden_dim=hidden_dim,
+            output_dim=state_latent_dim
+        )
 
-        action_embed = self.action_encoder(actions)  # Encode all actions
-        predicted_states.append(state_embed)
+        self.repr_dim = state_latent_dim
 
-        for t in range(trajectory_length - 1):
-            seq_input = torch.cat([state_embed.unsqueeze(1), action_embed[:, t, :].unsqueeze(1)], dim=-1)
-            Sx = self.temporal_model(seq_input)
-            Sy_hat = self.predictor(Sx)
+    def forward(self, initial_state, actions):
+        """
+        Forward pass for generating a sequence of states.
 
-            # Teacher forcing
-#            if torch.rand(1).item() < teacher_forcing_ratio:
- #               state_embed = self.state_encoder(states[:, t + 1])  # Ground truth state
-  #          else:
-            state_embed = Sy_hat
+        Args:
+            initial_state (torch.Tensor): The initial state image of shape [B, 2, 65, 65].
+            actions (torch.Tensor): The sequence of actions of shape [B, 16, 2].
 
-            predicted_states.append(Sy_hat)
+        Returns:
+            torch.Tensor: The sequence of states of shape [B, 17, 256].
+        """
+        B, T, _ = actions.size()  # B: batch size, T: sequence length (16 actions)
 
-        return torch.stack(predicted_states, dim=1)
+        # Encode the initial state
+        current_state_embedding = self.state_encoder(initial_state)  # [B, 256]
+
+        # Store the sequence of state embeddings
+        state_embeddings = [current_state_embedding]
+
+        # Encode actions
+        action_embeddings = self.action_encoder(actions)  # [B, 16, 256]
+
+        # Iteratively predict the next state
+        for t in range(T):  # Loop over the 16 actions
+            current_action_embedding = action_embeddings[:, t, :]  # [B, 256]
+            next_state_embedding = self.predictor(current_state_embedding, current_action_embedding)
+            state_embeddings.append(next_state_embedding)  # Append to the sequence
+            current_state_embedding = next_state_embedding  # Update the current state
+
+        # Concatenate all state embeddings along the time axis
+        state_embeddings = torch.stack(state_embeddings, dim=1)  # [B, 17, 256]
+
+        return state_embeddings  # Return all 17 state embeddings
