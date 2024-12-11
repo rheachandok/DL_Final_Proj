@@ -14,7 +14,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # Initialize models
 state_latent_dim = 256
 action_latent_dim = 32
-hidden_dim = 256
+hidden_dim = 512
 
 model = JEPA(state_latent_dim=state_latent_dim, action_latent_dim=action_latent_dim, hidden_dim=hidden_dim).to(device)
 
@@ -58,21 +58,29 @@ for epoch in range(num_epochs):
     for batch in progress_bar:
         states = batch.states.to(device)  # [B, 17, 2, 65, 65]
         actions = batch.actions.to(device)  # [B, 16, 2]
-
-        # Target states for comparison (all states except the first one)
-        target_states = states[:, 1:, :, :, :]  # [B, 16, 2, 65, 65]
-
+        #states = (states - states.mean(dim=[2, 3, 4], keepdim=True)) / states.std(dim=[2, 3, 4], keepdim=True)
         # Predict state embeddings for all timesteps
         predicted_states = model(states[:, 0, :, :, :], actions)  # [B, 17, 256]
-        predicted_states = predicted_states[:, 1:, :]  # Remove the first state embedding
+
+        target_states = states
 
         # Encode target states
         target_latent_states = model.state_encoder(target_states.reshape(-1, *target_states.shape[2:]))  # [B*16, 256]
         target_latent_states = target_latent_states.view(states.shape[0], target_states.shape[1], -1)  # [B, 16, 256]
 
         # Normalize embeddings
-        predicted_states = normalize_embeddings(predicted_states)  # [B, 16, 256]
-        target_latent_states = normalize_embeddings(target_latent_states)  # [B, 16, 256]
+        #predicted_states = predicted_states + torch.randn_like(predicted_states) * 0.01  # Scale noise with 0.01
+        #predicted_states = normalize_embeddings(predicted_states)  # [B, 16, 256]
+        #target_latent_states = normalize_embeddings(target_latent_states)  # [B, 16, 256]
+
+
+        std = predicted_states.std(dim=0)
+        mean_std = std.mean()  # Average standard deviation across all dimensions
+        min_std = std.min()    # Minimum standard deviation
+        max_std = std.max()    # Maximum standard deviation
+
+        print(f"Mean Std: {mean_std:.4f}, Min Std: {min_std:.4f}, Max Std: {max_std:.4f}")
+        print(f"Mean Std: {mean_std:.4f}, Min Std: {min_std:.4f}, Max Std: {max_std:.4f}")
 
         # Flatten for VICRegLoss
         predicted_states_flat = predicted_states.reshape(-1, predicted_states.shape[-1])  # [B*16, 256]

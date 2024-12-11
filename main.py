@@ -46,7 +46,7 @@ def load_model():
     # TODO: Replace MockModel with your trained model
     state_latent_dim = 256
     action_latent_dim = 32
-    hidden_dim = 256
+    hidden_dim = 512
     device = get_device()
     model = JEPA(state_latent_dim=state_latent_dim, action_latent_dim=action_latent_dim, hidden_dim=hidden_dim).to(device)
     #model.load_state_dict(torch.load('best_model.pth', weights_only=True))
