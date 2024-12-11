@@ -206,7 +206,7 @@ class ProbingEvaluator:
             target = getattr(batch, "locations").to(self.device)
             target = self.normalizer.normalize_location(target)
 
-            pred_locs = torch.stack([prober(x) for x in pred_encs], dim=1)
+            pred_locs = torch.stack([prober(x) for x in pred_encs.transpose(0, 1)], dim=1)  # [B, T, 2]
             losses = location_losses(pred_locs, target)
             probing_losses.append(losses.cpu())
 
