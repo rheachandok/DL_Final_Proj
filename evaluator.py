@@ -129,8 +129,8 @@ class ProbingEvaluator:
                     pred_encs = pred_encs[:, indices, :]
                     target = target[:, indices, :]
 
-                pred_locs = torch.stack([prober(x) for x in pred_encs], dim=1)
-
+                pred_locs = torch.stack([prober(x) for x in pred_encs.transpose(0, 1)], dim=1)  # [B, T, 2]
+        
                 # Debug shapes again
                 print(f"After sampling: pred_locs shape: {pred_locs.shape}, target shape: {target.shape}")
 
