@@ -53,13 +53,23 @@ class ActionEncoder(nn.Module):
 
 class Predictor(nn.Module):
     def __init__(self, input_dim=512, hidden_dim=256, output_dim=256, dropout=0.2, num_layers=2):
+        """
+        Temporal Predictor using GRU for sequence modeling.
+
+        Args:
+            input_dim (int): Dimension of the input feature vector (state + action).
+            hidden_dim (int): Dimension of the GRU's hidden state.
+            output_dim (int): Dimension of the output feature vector.
+            dropout (float): Dropout rate for regularization.
+            num_layers (int): Number of GRU layers.
+        """
         super(Predictor, self).__init__()
-        self.lstm = nn.LSTM(
+        self.gru = nn.GRU(
             input_size=input_dim,
             hidden_size=hidden_dim,
             num_layers=num_layers,
             batch_first=True,
-            dropout=dropout
+            dropout=dropout if num_layers > 1 else 0.0  # Dropout only applies for num_layers > 1
         )
         self.fc = nn.Sequential(
             nn.Linear(hidden_dim, hidden_dim),
@@ -69,11 +79,27 @@ class Predictor(nn.Module):
         )
 
     def forward(self, states, actions):
+        """
+        Forward pass for the GRU-based Predictor.
+
+        Args:
+            states (torch.Tensor): State embeddings of shape [B, T, state_dim].
+            actions (torch.Tensor): Action embeddings of shape [B, T, action_dim].
+
+        Returns:
+            torch.Tensor: Predicted state embeddings of shape [B, T, output_dim].
+        """
         # Concatenate states and actions along the feature dimension
         x = torch.cat((states, actions), dim=2)  # [B, T, state_dim + action_dim]
-        lstm_out, _ = self.lstm(x)  # LSTM output: [B, T, hidden_dim]
-        output = self.fc(lstm_out)  # [B, T, output_dim]
+
+        # Pass through GRU
+        gru_out, _ = self.gru(x)  # GRU output: [B, T, hidden_dim]
+
+        # Map GRU outputs to desired output_dim
+        output = self.fc(gru_out)  # [B, T, output_dim]
+
         return output
+
 
 
 class JEPA(nn.Module):
