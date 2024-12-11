@@ -2,12 +2,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-import torch
-import torch.nn as nn
-
-import torch
-import torch.nn as nn
-
 class StateEncoder(nn.Module):
     def __init__(self, embedding_dim=256):
         """
@@ -90,25 +84,52 @@ class ActionEncoder(nn.Module):
 
 
 
-import torch.nn as nn
-
 class Predictor(nn.Module):
-    def __init__(self, input_dim=512, hidden_dim=256, output_dim=256, dropout=0.2):
+    def __init__(self, input_dim=512, hidden_dim=256, output_dim=256, dropout=0.2, num_layers=2):
         super(Predictor, self).__init__()
+        self.input_dim = input_dim
+        self.hidden_dim = hidden_dim
+        self.output_dim = output_dim
+
+        # LSTM layers for temporal prediction
+        self.lstm = nn.LSTM(
+            input_size=input_dim,
+            hidden_size=hidden_dim,
+            num_layers=num_layers,
+            batch_first=True,
+            dropout=dropout
+        )
+
+        # Fully connected layers for mapping to the output
         self.fc = nn.Sequential(
-            nn.Linear(input_dim, hidden_dim),
-            nn.ReLU(),
-            nn.Dropout(dropout),       # Dropout layer
             nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
-            nn.Dropout(dropout),       # Dropout layer
+            nn.Dropout(dropout),  # Dropout for regularization
             nn.Linear(hidden_dim, output_dim)
         )
 
-    def forward(self, state, action):
-        x = torch.cat((state, action), dim=1)  # [B*(T-1), 512]
-        x = self.fc(x)                         # [B*(T-1), 256]
-        return x  # [B*(T-1), 256]
+    def forward(self, states, actions):
+        """
+        Forward pass for the TemporalPredictor.
+
+        Args:
+            states: Tensor of shape [B, T, state_dim].
+            actions: Tensor of shape [B, T, action_dim].
+
+        Returns:
+            Tensor of shape [B, T, output_dim].
+        """
+        # Concatenate states and actions along the feature dimension
+        x = torch.cat((states, actions), dim=2)  # [B, T, state_dim + action_dim]
+
+        # Pass through LSTM
+        lstm_out, _ = self.lstm(x)  # lstm_out: [B, T, hidden_dim]
+
+        # Map LSTM outputs to desired output_dim
+        output = self.fc(lstm_out)  # [B, T, output_dim]
+
+        return output  # [B, T, output_dim]
+
 
 
 class JEPA(nn.Module):
