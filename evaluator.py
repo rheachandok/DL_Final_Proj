@@ -79,10 +79,9 @@ class ProbingEvaluator:
 
         if self.quick_debug:
             epochs = 1
-
         test_batch = next(iter(dataset))
-        prober_output_shape = getattr(test_batch, "locations")[0, 0].shape
 
+        prober_output_shape = getattr(test_batch, "locations")[0, 0].shape
         prober = Prober(
             repr_dim,
             config.prober_arch,
@@ -95,6 +94,7 @@ class ProbingEvaluator:
         optimizer_pred_prober = torch.optim.Adam(all_parameters, config.lr)
 
         step = 0
+
         batch_size = dataset.batch_size
         batch_steps = None
 
@@ -110,41 +110,55 @@ class ProbingEvaluator:
 
         for epoch in tqdm(range(epochs), desc=f"Probe prediction epochs"):
             for batch in tqdm(dataset, desc="Probe prediction step"):
-                init_states = batch.states[:, 0, :, :, :]  # Extract initial state [B, C, H, W]
-                pred_encs = model(init_states, batch.actions)  # Use JEPA forward pass
+                ################################################################################
+                # TODO: Forward pass through your model
+                init_states = batch.states[:, 0:1]  # BS, 1, C, H, W
+                pred_encs = model(states=init_states, actions=batch.actions)
+                pred_encs = pred_encs.transpose(0, 1)  # # BS, T, D --> T, BS, D
+
+                # Make sure pred_encs has shape (T, BS, D) at this point
+                ################################################################################
 
                 pred_encs = pred_encs.detach()
 
-                losses_list = []
-                
-                n_steps = pred_encs.shape[1]
-                bs = pred_encs.shape[0]
+                n_steps = pred_encs.shape[0]
+                bs = pred_encs.shape[1]
 
-                target = getattr(batch, "locations").to(self.device)
+                losses_list = []
+
+                target = getattr(batch, "locations").cuda()
                 target = self.normalizer.normalize_location(target)
 
-                # Debug shapes
-                print(f"Initial pred_encs shape: {pred_encs.shape}, target shape: {target.shape}")
+                if (
+                    config.sample_timesteps is not None
+                    and config.sample_timesteps < n_steps
+                ):
+                    sample_shape = (config.sample_timesteps,) + pred_encs.shape[1:]
+                    # we only randomly sample n timesteps to train prober.
+                    # we most likely do this to avoid OOM
+                    sampled_pred_encs = torch.empty(
+                        sample_shape,
+                        dtype=pred_encs.dtype,
+                        device=pred_encs.device,
+                    )
 
-                if config.sample_timesteps is not None and config.sample_timesteps < n_steps:
-                    indices = torch.randperm(n_steps)[: config.sample_timesteps]
-                    pred_encs = pred_encs[:, indices, :]
-                    target = target[:, indices, :]
+                    sampled_target_locs = torch.empty(bs, config.sample_timesteps, 2)
 
-                pred_locs = torch.stack([prober(x) for x in pred_encs.transpose(0, 1)], dim=1)  # [B, T, 2]
-        
-                # Debug shapes again
-                print(f"After sampling: pred_locs shape: {pred_locs.shape}, target shape: {target.shape}")
+                    for i in range(bs):
+                        indices = torch.randperm(n_steps)[: config.sample_timesteps]
+                        sampled_pred_encs[:, i, :] = pred_encs[indices, i, :]
+                        sampled_target_locs[i, :] = target[i, indices]
 
-                assert pred_locs.shape == target.shape, (
-                    f"Shape mismatch: pred_locs={pred_locs.shape}, target={target.shape}"
-                )
+                    pred_encs = sampled_pred_encs
+                    target = sampled_target_locs.cuda()
 
+                pred_locs = torch.stack([prober(x) for x in pred_encs], dim=1)
                 losses = location_losses(pred_locs, target)
                 per_probe_loss = losses.mean()
 
                 if step % 100 == 0:
-                    print(f"Normalized pred locations loss: {per_probe_loss.item()}")
+                    print(f"normalized pred locations loss {per_probe_loss.item()}")
+
                 losses_list.append(per_probe_loss)
                 optimizer_pred_prober.zero_grad()
                 loss = sum(losses_list)
@@ -195,18 +209,19 @@ class ProbingEvaluator:
 
         for idx, batch in enumerate(tqdm(val_ds, desc="Eval probe pred")):
             ################################################################################
-            # Updated Forward Pass
-            ################################################################################
-            init_states = batch.states[:, 0, :, :, :]  # Extract initial state [B, C, H, W]
-            pred_encs = model(init_states, batch.actions)  # Use JEPA forward pass
+            # TODO: Forward pass through your model
+            init_states = batch.states[:, 0:1]  # BS, 1 C, H, W
+            pred_encs = model(states=init_states, actions=batch.actions)
+            # # BS, T, D --> T, BS, D
+            pred_encs = pred_encs.transpose(0, 1)
+
+            # Make sure pred_encs has shape (T, BS, D) at this point
             ################################################################################
 
-            pred_encs = pred_encs.detach()
-
-            target = getattr(batch, "locations").to(self.device)
+            target = getattr(batch, "locations").cuda()
             target = self.normalizer.normalize_location(target)
 
-            pred_locs = torch.stack([prober(x) for x in pred_encs.transpose(0, 1)], dim=1)  # [B, T, 2]
+            pred_locs = torch.stack([prober(x) for x in pred_encs], dim=1)
             losses = location_losses(pred_locs, target)
             probing_losses.append(losses.cpu())
 
