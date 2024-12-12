@@ -131,7 +131,7 @@ class JEPA(nn.Module):
         Predict a sequence of future state embeddings starting from an initial state.
 
         Args:
-            initial_state (torch.Tensor): Initial state image of shape [B, 2, 65, 65].
+            states (torch.Tensor): Input tensor of shape [B, T, C, H, W] or [B, C, H, W].
             actions (torch.Tensor): Sequence of actions of shape [B, T, 2].
 
         Returns:
@@ -139,26 +139,32 @@ class JEPA(nn.Module):
         """
         B, T, _ = actions.size()  # B: Batch size, T: Number of timesteps
 
-        if len(states.shape) == 5:
-            initial_state = states.squeeze(1)
+        # Extract and encode the initial state
+        if states.ndim == 5:
+            # Time-series input: [B, T, C, H, W]
+            initial_state = states[:, 0, :, :, :]  # Extract the first state
+        elif states.ndim == 4:
+            # Single state input: [B, C, H, W]
+            initial_state = states
+        else:
+            raise ValueError(f"Unexpected states shape: {states.shape}. Expected 4D or 5D tensor.")
 
-        # Encode the initial state
         initial_state_embedding = self.state_encoder(initial_state)  # [B, state_latent_dim]
 
-        # Encode the sequence of actions
+        # Encode actions
         action_embeddings = self.action_encoder(actions)  # [B, T, action_latent_dim]
 
-        # Prepare the initial state embedding for the GRU
+        # Combine state and action embeddings
         initial_state_embedding = initial_state_embedding.unsqueeze(1)  # [B, 1, state_latent_dim]
         repeated_initial_state = initial_state_embedding.repeat(1, T, 1)  # [B, T, state_latent_dim]
+        combined_embeddings = torch.cat((repeated_initial_state, action_embeddings), dim=2)  # [B, T, input_dim]
 
-        # Combine state embeddings with action embeddings over time
-        combined_embeddings = torch.cat((repeated_initial_state, action_embeddings), dim=2)  # [B, T, state_latent_dim + action_latent_dim]
-
-        # Pass through the GRU predictor
+        # Predict future states
         predicted_embeddings = self.predictor(combined_embeddings)  # [B, T, state_latent_dim]
 
-        # Include the initial state embedding in the output sequence
-        predicted_embeddings = torch.cat((initial_state_embedding, predicted_embeddings), dim=1)  # [B, T+1, state_latent_dim]
+        # Include the initial state embedding in the sequence
+        predicted_embeddings = torch.cat(
+            (initial_state_embedding, predicted_embeddings), dim=1
+        )  # [B, T+1, state_latent_dim]
 
         return predicted_embeddings
