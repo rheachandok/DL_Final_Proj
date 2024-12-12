@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from tqdm import tqdm
-from loss import VICRegLoss
+from loss import SLIMCRLoss
 from impl import JEPA
 from dataset import create_wall_dataloader
 from normalization import Normalizer
@@ -32,7 +32,7 @@ optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-5)
 scheduler = CosineAnnealingLR(optimizer, T_max=50)
 
 # Define loss function
-vicreg_loss = VICRegLoss(
+slimcr_loss = SLIMCRLoss(
     lambda_invariance=1.0,   # Balances reconstruction fidelity
     lambda_variance=25.0,    # Strong regularization against collapse
     lambda_covariance=1.0    # Decorrelation of embedding dimensions
@@ -52,7 +52,7 @@ def normalize_embeddings(embeddings):
 
 for epoch in range(num_epochs):
     model.train()
-    epoch_vicreg_loss = 0.0
+    epoch_slimcr_loss = 0.0
     progress_bar = tqdm(train_loader, desc=f"Training Epoch {epoch+1}", leave=False)
 
     for batch in progress_bar:
@@ -87,7 +87,7 @@ for epoch in range(num_epochs):
         target_latent_states_flat = target_latent_states.reshape(-1, target_latent_states.shape[-1])  # [B*16, 256]
 
         # Compute loss
-        total_loss, inv_loss, var_loss, cov_loss = vicreg_loss(predicted_states_flat, target_latent_states_flat)
+        total_loss, inv_loss, var_loss, cov_loss = slimcr_loss(predicted_states_flat, target_latent_states_flat)
 
         # Backpropagation
         optimizer.zero_grad()
@@ -96,7 +96,7 @@ for epoch in range(num_epochs):
         optimizer.step()
 
         # Update progress bar
-        epoch_vicreg_loss += total_loss.item()
+        epoch_slimcr_loss += total_loss.item()
         progress_bar.set_postfix({
             'Total Loss': f"{total_loss.item():.4f}",
             'Invariance': f"{inv_loss.item():.4f}",
@@ -106,12 +106,12 @@ for epoch in range(num_epochs):
 
     # Step the learning rate scheduler
     scheduler.step()
-    avg_vicreg_loss = epoch_vicreg_loss / len(train_loader)
-    print(f"Epoch {epoch+1} - VICReg Loss: {avg_vicreg_loss:.4f}")
+    avg_slimcr_loss = epoch_slimcr_loss / len(train_loader)
+    print(f"Epoch {epoch+1} - SlimCR Loss: {avg_slimcr_loss:.4f}")
 
     # Save checkpoint if loss improves
-    if avg_vicreg_loss < best_train_loss:
-        best_train_loss = avg_vicreg_loss
+    if avg_slimcr_loss < best_train_loss:
+        best_train_loss = avg_slimcr_loss
         torch.save({
             'model_state_dict': model.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
