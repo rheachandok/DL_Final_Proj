@@ -6,7 +6,7 @@ from loss import SLIMCRLoss
 from impl import JEPA
 from dataset import create_wall_dataloader
 from normalization import Normalizer
-from torch.optim.lr_scheduler import CosineAnnealingLR
+from torch.optim.lr_scheduler import CosineAnnealingLR, ReduceLROnPlateau
 
 # Initialize device
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -28,8 +28,16 @@ train_loader = create_wall_dataloader(
 )
 
 # Define Optimizer and Scheduler
-optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-5)
-scheduler = CosineAnnealingLR(optimizer, T_max=50)
+#optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-5)
+
+optimizer = torch.optim.SGD(
+    model.parameters(),
+    lr=0.01,           # Learning rate
+    momentum=0.9,      # Momentum term
+    weight_decay=1e-4  # Regularization for weights
+)
+
+scheduler = CosineAnnealingLR(optimizer, T_max=100)
 
 # Define loss function
 slimcr_loss = SLIMCRLoss(
