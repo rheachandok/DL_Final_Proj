@@ -8,7 +8,7 @@ def invariance_loss(Sy_hat, Sy):
     """
     return F.mse_loss(Sy_hat, Sy)
 
-def slim_variance_loss(embeddings, eps=1e-4, min_threshold=1.0):
+def variance_loss(embeddings, eps=1e-4, min_threshold=1.0):
     """
     Encourages sufficient spread in embeddings by penalizing low variance.
     Uses a stronger constraint to prevent collapse.
@@ -17,7 +17,7 @@ def slim_variance_loss(embeddings, eps=1e-4, min_threshold=1.0):
     variance_loss = torch.mean(torch.clamp(min_threshold - std, min=0))  # Penalize low std
     return variance_loss
 
-def slim_covariance_loss(embeddings, reg_weight=0.1):
+def covariance_loss(embeddings, reg_weight=0.1):
     """
     Encourages decorrelation of embedding dimensions while reducing off-diagonal covariance.
     """
@@ -27,17 +27,17 @@ def slim_covariance_loss(embeddings, reg_weight=0.1):
     cov_loss = (cov ** 2).sum() - torch.diagonal(cov).pow(2).sum()  # Off-diagonal terms
     return reg_weight * cov_loss / D  # Normalize by embedding dimension
 
-class SLIMCRLoss(nn.Module):
+class VICREGLoss(nn.Module):
     def __init__(self, lambda_invariance=1.0, lambda_variance=10.0, lambda_covariance=1.0):
         """
-        SLIM-CR Loss: Combines invariance, variance, and covariance regularization.
+        VicReg Loss: Combines invariance, variance, and covariance regularization.
 
         Args:
             lambda_invariance (float): Weight for invariance loss.
             lambda_variance (float): Weight for variance regularization.
             lambda_covariance (float): Weight for covariance regularization.
         """
-        super(SLIMCRLoss, self).__init__()
+        super(VICREGLoss, self).__init__()
         self.lambda_invariance = lambda_invariance
         self.lambda_variance = lambda_variance
         self.lambda_covariance = lambda_covariance
@@ -60,10 +60,10 @@ class SLIMCRLoss(nn.Module):
         inv_loss = invariance_loss(Sy_hat, Sy)
 
         # Variance Loss: Ensure embeddings have sufficient variance
-        var_loss = slim_variance_loss(Sy_hat) + slim_variance_loss(Sy)
+        var_loss = variance_loss(Sy_hat) + variance_loss(Sy)
 
         # Covariance Loss: Decorrelate embedding dimensions
-        cov_loss = slim_covariance_loss(Sy_hat) + slim_covariance_loss(Sy)
+        cov_loss = covariance_loss(Sy_hat) + covariance_loss(Sy)
 
         # Total Loss
         total_loss = (

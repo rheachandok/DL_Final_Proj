@@ -49,16 +49,8 @@ def load_model():
     hidden_dim = 512
     device = get_device()
     model = JEPA(state_latent_dim=state_latent_dim, action_latent_dim=action_latent_dim, hidden_dim=hidden_dim).to(device)
-    #model.load_state_dict(torch.load('best_model.pth', weights_only=True))
-    checkpoint_path = "best_model.pth"
-    checkpoint = torch.load(checkpoint_path, map_location=device)
-
-    # Extract only the model state_dict from the checkpoint
-    model_state_dict = checkpoint['model_state_dict']
-
-    # Load the model state_dict into your model
-    model.load_state_dict(model_state_dict)
-
+    checkpoint_path = "model_weights.pth"
+    model.load_state_dict(torch.load('checkpoint_path'))
     print("Model loaded successfully from checkpoint.")
     return model
 

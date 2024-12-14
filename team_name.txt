@@ -1,0 +1,6 @@
+Team Name: Backpropagators
+Team ID: 25
+Members:
+Aditya Suresh (as17339)
+Rhea Chandok (rc5397)
+Swarali Borde (sdb7897)
