@@ -5,13 +5,11 @@ from tqdm import tqdm
 from loss import VICREGLoss
 from impl import JEPA
 from dataset import create_wall_dataloader
-from normalization import Normalizer
-from torch.optim.lr_scheduler import CosineAnnealingLR, ReduceLROnPlateau
+from torch.optim.lr_scheduler import CosineAnnealingLR
 
 
 def train_model():
 
-    device = get_device()
     # Initialize device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 

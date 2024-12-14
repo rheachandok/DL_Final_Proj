@@ -50,7 +50,7 @@ def load_model():
     device = get_device()
     model = JEPA(state_latent_dim=state_latent_dim, action_latent_dim=action_latent_dim, hidden_dim=hidden_dim).to(device)
     checkpoint_path = "model_weights.pth"
-    model.load_state_dict(torch.load('checkpoint_path'))
+    model.load_state_dict(torch.load(checkpoint_path))
     print("Model loaded successfully from checkpoint.")
     return model
 
