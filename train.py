@@ -119,21 +119,6 @@ def train_model():
 
 if __name__ == "__main__":
     train_model()
-    # Instantiate the model architecture
 
-    # Initialize models
-    state_latent_dim = 256
-    action_latent_dim = 32
-    hidden_dim = 512
-
-    model = JEPA(state_latent_dim=state_latent_dim, action_latent_dim=action_latent_dim, hidden_dim=hidden_dim).to(device)
-    # Load the saved weights
-    model.load_state_dict(torch.load('model_weights.pth'))
-
-    for name, param in model.named_parameters():
-        if param.requires_grad:
-            print(f"{name}: {param.numel():,} parameters")
-    total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    print(f"Total Trainable Parameters: {total_params:,}")
 
 

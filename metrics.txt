@@ -1,6 +1,7 @@
-probe_normal loss: 5.84945
-probe_wall loss: 8.19717
-probe_expert loss
-probe_wall_other loss 
+probe_normal loss: 6.701845645904541
+probe_wall loss: 9.259726524353027
+probe_wall_other loss: 9.770018577575684
+probe_expert loss: 147.70169067382812
 model parameter count: 1,985,664
 training command: python train.py
+
